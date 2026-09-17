@@ -1,0 +1,64 @@
+TEMARIO BOMBERO ALMERÍA — versión independiente (sin Claude)
+==============================================================
+
+Esta carpeta es una página web completa y autónoma. No depende de
+ninguna cuenta de Claude ni de ninguna suscripción: una vez publicada,
+es tuya para siempre y no se puede "cortar" porque dejes de pagar nada.
+
+Contraseña de entrada actual: bombero2026
+(está en el archivo app.js, en la línea que dice SITE_PASSWORD — puedes
+cambiarla tú mismo abriendo ese archivo con cualquier editor de texto,
+o pedírmelo a mí y te lo cambio).
+
+CÓMO PUBLICARLA GRATIS EN GITHUB PAGES (recomendado)
+------------------------------------------------------
+1. Entra en https://github.com y crea una cuenta gratuita si no tienes
+   (arriba a la derecha, "Sign up").
+2. Una vez dentro, pulsa el botón "+" (arriba a la derecha) → "New repository".
+   - Nombre del repositorio: por ejemplo "temario-bombero"
+   - Marca "Public" (tiene que ser público para que GitHub Pages sea gratis,
+     pero eso no afecta a la privacidad de tu web: seguirá pidiendo la
+     contraseña igualmente).
+   - Pulsa "Create repository".
+3. En la página del repositorio recién creado, pulsa "uploading an existing
+   file" (o "Add file" → "Upload files").
+4. Arrastra TODO el contenido de esta carpeta (no la carpeta en sí, sino
+   los archivos y subcarpetas de dentro: index.html, style.css, app.js,
+   data/, imagenes/, pdfs/) a la zona de subida. Puede tardar unos minutos
+   por el tamaño (~40 MB en total). Pulsa "Commit changes" al terminar.
+5. Ve a la pestaña "Settings" del repositorio → en el menú de la izquierda,
+   "Pages" → en "Source" elige la rama "main" y la carpeta "/ (root)" →
+   "Save".
+6. Espera 1-2 minutos y GitHub te dará una dirección del tipo:
+   https://tu-usuario.github.io/temario-bombero/
+   Esa es tu web, para siempre, gratis, tuya.
+
+Si en algún momento quieres que yo lo haga por ti directamente desde tu
+ordenador (sin que tengas que subir nada a mano), dímelo y, si conectamos
+tu ordenador a esta conversación, puedo dejarlo publicado yo mismo con tu
+cuenta de GitHub ya creada por ti.
+
+CÓMO ACTUALIZARLA EN EL FUTURO
+------------------------------------------------------
+Si el temario cambia o quieres una versión nueva: vuelve a "Add file" →
+"Upload files" en el mismo repositorio y sube los archivos nuevos
+(sobrescriben a los antiguos automáticamente). También puedo generarte
+yo la carpeta actualizada cuando la necesites.
+
+SINCRONIZACIÓN DE PROGRESO ENTRE DISPOSITIVOS
+------------------------------------------------------
+Como ya no depende de ninguna nube de Claude, el progreso (temas
+dominados, resultados de tests, racha, fecha de examen) se guarda solo
+en el navegador de cada dispositivo. Para pasarlo de tu móvil a tu PC
+(o al revés):
+  1. En el dispositivo de origen, pulsa "Exportar" (arriba, junto a tu
+     nombre) — se descarga un archivo .json pequeño.
+  2. Mándatelo al otro dispositivo (WhatsApp, email, etc.) y ábrelo con
+     la app.
+  3. En el otro dispositivo, pulsa "Importar" y selecciona ese archivo.
+
+PARA TU AMIGO
+------------------------------------------------------
+Solo tiene que abrir el mismo enlace, poner la contraseña y elegir su
+propio nombre + PIN al entrar — su progreso se guarda por separado en
+su propio navegador, sin tocar el tuyo.

@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Temario Bombero · Almería</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%9A%92%3C/text%3E%3C/svg%3E">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="gate-overlay"></div>
+<div id="app">
+  <div id="sidebar">
+    <div id="sidebar-header">
+      <h1>Temario Bombero · Almería</h1>
+      <input id="search-box" type="text" placeholder="Buscar en todo el temario…">
+    </div>
+    <div id="nav-tabs">
+      <button class="nav-tab active" data-view="temario">Temario</button>
+      <button class="nav-tab" data-view="test">Test</button>
+      <button class="nav-tab" data-view="plan">Plan</button>
+      <button class="nav-tab" data-view="progreso">Progreso</button>
+    </div>
+    <div id="tema-list"></div>
+  </div>
+  <div id="main-col">
+    <div id="persona-bar"></div>
+    <div id="main">
+      <div id="view-temario" class="view"><div id="content-wrap"></div></div>
+      <div id="view-test" class="view" style="display:none"></div>
+      <div id="view-plan" class="view" style="display:none"></div>
+      <div id="view-progreso" class="view" style="display:none"></div>
+    </div>
+  </div>
+</div>
+<script src="app.js"></script>
+</body>
+</html>
