@@ -3,9 +3,6 @@
    de un dispositivo a otro usa los botones «Exportar»/«Importar» de la barra
    superior (descargan/cargan un pequeño fichero .json). */
 
-/* ---------- Contraseña de acceso (cámbiala aquí si quieres otra) ---------- */
-const SITE_PASSWORD = "bombero2026";
-
 /* ---------- Lista cerrada de usuarios autorizados ----------
    SOLO estas personas pueden entrar (nombre + PIN exactos). NADIE puede
    crearse una cuenta nueva por su cuenta: si el nombre+PIN no está aquí,
@@ -328,13 +325,14 @@ function openTema(id) {
       <h1>${escapeHtml(cleanTitle)}</h1>
       <div class="tema-status-row">
         ${["pendiente", "en_estudio", "dominado"].map(s => `<button class="status-btn ${statusOf(id) === s ? "active-" + s : ""}" data-status="${s}">${s === "pendiente" ? "Pendiente" : s === "en_estudio" ? "En estudio" : "Dominado"}</button>`).join("")}
-        <a class="status-btn pdf-link" href="pdfs/${encodeURIComponent(id)}.pdf" download target="_blank" rel="noopener">⬇ Descargar PDF del tema</a>
+        <button type="button" class="status-btn pdf-link" id="btn-download-pdf">⬇ Descargar PDF del tema</button>
         ${tienePresentacion ? `<a class="status-btn pdf-link" href="presentaciones/${encodeURIComponent(id)}.pdf" download target="_blank" rel="noopener">📊 Descargar presentación</a>` : ""}
       </div>
     </div>
     ${tieneVideo ? `
-      <div class="tema-video-wrap">
+      <div class="tema-video-wrap" id="tema-video-wrap">
         <video controls preload="metadata" src="videos/${encodeURIComponent(id)}.mp4"></video>
+        <div class="tema-video-error-msg">⚠️ No se ha podido cargar el vídeo. Comprueba que el fichero <code>videos/${escapeHtml(id)}.mp4</code> existe en la carpeta de la plataforma.</div>
         <div class="tema-video-caption">Vídeo-resumen generado con NotebookLM</div>
       </div>
     ` : ""}
@@ -346,7 +344,7 @@ function openTema(id) {
     ` : ""}
     <div class="md-body">${bodyHtml}</div>
   `;
-  wrap.querySelectorAll(".status-btn").forEach(btn => {
+  wrap.querySelectorAll(".status-btn[data-status]").forEach(btn => {
     btn.onclick = () => {
       STATE.temaStatus[id] = btn.dataset.status;
       scheduleSave();
@@ -355,6 +353,15 @@ function openTema(id) {
       renderSidebarList(document.getElementById("search-box").value);
     };
   });
+  const pdfBtn = document.getElementById("btn-download-pdf");
+  if (pdfBtn) pdfBtn.onclick = () => window.print();
+  if (tieneVideo) {
+    const videoEl = wrap.querySelector(".tema-video-wrap video");
+    const videoWrap = document.getElementById("tema-video-wrap");
+    if (videoEl && videoWrap) {
+      videoEl.addEventListener("error", () => videoWrap.classList.add("video-error"));
+    }
+  }
   window.scrollTo(0, 0);
   document.getElementById("main").scrollTop = 0;
   renderSidebarList(document.getElementById("search-box").value);
@@ -367,19 +374,45 @@ function bloqueOptions() {
   return TEMARIO.bloques.map(b => ({ id: b.id, nombre: b.nombre }));
 }
 
+// Devuelve los temas (con su bloqueId) de los bloques indicados, en orden.
+function temasDeBloques(bloqueIds) {
+  const out = [];
+  for (const b of TEMARIO.bloques) {
+    if (!bloqueIds.has(b.id)) continue;
+    for (const t of b.temas) out.push({ ...t, bloqueId: b.id, bloqueNombre: b.nombre });
+  }
+  return out;
+}
+
+function countByTema() {
+  const counts = {};
+  for (const p of PREGUNTAS) counts[p.temaId] = (counts[p.temaId] || 0) + 1;
+  return counts;
+}
+
 function renderTestSetup() {
   const el = document.getElementById("view-test");
   const bloques = bloqueOptions();
+  const counts = countByTema();
   el.innerHTML = `
     <div class="panel">
       <h1>Modo test</h1>
       <div class="sub">${PREGUNTAS.length} preguntas disponibles del banco de exámenes reales.</div>
       <div class="card">
-        <h3>Ámbito</h3>
+        <h3>Ámbito — bloques</h3>
         <div class="chip-group" id="chip-bloques">
           <div class="chip selected" data-id="todos">Todos los bloques</div>
           ${bloques.map(b => `<div class="chip" data-id="${b.id}">${b.nombre}</div>`).join("")}
         </div>
+      </div>
+      <div class="card">
+        <h3>Ámbito — temas concretos</h3>
+        <div class="sub">Opcional: elige temas concretos dentro de los bloques seleccionados. Si no marcas ninguno, se usan todos los temas de esos bloques.</div>
+        <div class="field-row">
+          <button type="button" class="link-btn" id="btn-temas-todos">Marcar todos</button>
+          <button type="button" class="link-btn" id="btn-temas-ninguno">Desmarcar todos</button>
+        </div>
+        <div class="chip-group" id="chip-temas"></div>
       </div>
       <div class="card">
         <h3>Modo</h3>
@@ -400,6 +433,33 @@ function renderTestSetup() {
     </div>
   `;
   let selectedBloques = new Set(["todos"]);
+  let selectedTemas = new Set(); // vacío = sin filtro por tema (usa todos los temas de los bloques elegidos)
+
+  function currentBloqueIdSet() {
+    if (selectedBloques.has("todos")) return new Set(TEMARIO.bloques.map(b => b.id));
+    return selectedBloques;
+  }
+
+  function renderTemaChips() {
+    const temasChipEl = document.getElementById("chip-temas");
+    const temas = temasDeBloques(currentBloqueIdSet());
+    // Al cambiar de bloques, descarta selecciones de temas que ya no aplican.
+    const idsVisibles = new Set(temas.map(t => t.id));
+    for (const id of Array.from(selectedTemas)) if (!idsVisibles.has(id)) selectedTemas.delete(id);
+    temasChipEl.innerHTML = temas.map(t => {
+      const label = t.titulo.replace(/^BLOQUE ESPECÍFICO — TEMA \d+\.\s*/i, "").replace(/^Tema \d+\.\s*/i, "");
+      const n = counts[t.id] || 0;
+      return `<div class="chip${selectedTemas.has(t.id) ? " selected" : ""}" data-tema-id="${t.id}">${t.numero ? t.numero + ". " : ""}${escapeHtml(label)} <span class="chip-count">(${n})</span></div>`;
+    }).join("") || `<div class="sub">Elige al menos un bloque.</div>`;
+    temasChipEl.querySelectorAll(".chip").forEach(chip => {
+      chip.onclick = () => {
+        const id = chip.dataset.temaId;
+        if (selectedTemas.has(id)) selectedTemas.delete(id); else selectedTemas.add(id);
+        chip.classList.toggle("selected", selectedTemas.has(id));
+      };
+    });
+  }
+
   el.querySelectorAll("#chip-bloques .chip").forEach(chip => {
     chip.onclick = () => {
       const id = chip.dataset.id;
@@ -411,13 +471,25 @@ function renderTestSetup() {
         if (selectedBloques.size === 0) selectedBloques.add("todos");
       }
       el.querySelectorAll("#chip-bloques .chip").forEach(c => c.classList.toggle("selected", selectedBloques.has(c.dataset.id)));
+      renderTemaChips();
     };
   });
+  document.getElementById("btn-temas-todos").onclick = () => {
+    for (const t of temasDeBloques(currentBloqueIdSet())) selectedTemas.add(t.id);
+    renderTemaChips();
+  };
+  document.getElementById("btn-temas-ninguno").onclick = () => {
+    selectedTemas.clear();
+    renderTemaChips();
+  };
+  renderTemaChips();
+
   document.getElementById("btn-start-quiz").onclick = () => {
     const n = parseInt(document.getElementById("num-preguntas").value, 10) || 20;
     const limitMin = parseInt(document.getElementById("tiempo-limite").value, 10) || 0;
     const soloFalladas = document.getElementById("solo-falladas").checked;
     let pool = PREGUNTAS.filter(p => selectedBloques.has("todos") || selectedBloques.has(p.bloqueId));
+    if (selectedTemas.size > 0) pool = pool.filter(p => selectedTemas.has(p.temaId));
     if (soloFalladas) {
       pool = pool.filter(p => {
         const rec = STATE.preguntas[p.id];
@@ -694,39 +766,6 @@ function showView(name) {
   markActivity();
 }
 
-/* ============================= Puerta de contraseña ============================= */
-function showPasswordGate() {
-  return new Promise((resolve) => {
-    if (lsGet("tb_gate_ok") === "1") { resolve(); return; }
-    const overlay = document.getElementById("gate-overlay");
-    overlay.innerHTML = `
-      <div class="gate-card">
-        <h2>Temario Bombero · Almería</h2>
-        <div class="sub">Plataforma privada. Introduce la contraseña para entrar.</div>
-        <input type="password" id="gate-pass-input" placeholder="Contraseña" autofocus>
-        <div class="gate-error" id="gate-pass-error"></div>
-        <button class="btn" id="gate-pass-btn">Entrar</button>
-      </div>
-    `;
-    overlay.style.display = "flex";
-    const input = document.getElementById("gate-pass-input");
-    const err = document.getElementById("gate-pass-error");
-    const submit = () => {
-      if (input.value === SITE_PASSWORD) {
-        lsSet("tb_gate_ok", "1");
-        overlay.style.display = "none";
-        resolve();
-      } else {
-        err.textContent = "Contraseña incorrecta.";
-        input.value = "";
-        input.focus();
-      }
-    };
-    document.getElementById("gate-pass-btn").onclick = submit;
-    input.addEventListener("keydown", (e) => { if (e.key === "Enter") submit(); });
-  });
-}
-
 /* ============================= Puerta de persona (nombre + PIN) ============================= */
 function simpleHash(s) {
   let h = 0;
@@ -876,7 +915,6 @@ function refreshCurrentView() {
 
 /* ============================= Init ============================= */
 async function init() {
-  await showPasswordGate();
   await initPersonaAndState();
 
   const [temarioRes, preguntasRes] = await Promise.all([
