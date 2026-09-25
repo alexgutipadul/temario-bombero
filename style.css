@@ -186,6 +186,38 @@ select:focus-visible,
 .gate-card .btn { width: 100%; padding: 10px; margin-top: 4px; }
 .gate-error { color: var(--error-text); font-size: 12.5px; min-height: 16px; margin-bottom: 4px; font-weight: 600; }
 
+.google-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  width: 100%;
+  padding: 9px 11px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--surface-1);
+  color: var(--text-primary);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  margin-top: 2px;
+}
+.google-btn:hover { background: var(--surface-2); }
+.gate-divider {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 14px 0 12px;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+.gate-divider::before, .gate-divider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+
 /* ---------- Barra de persona / sincronización ---------- */
 #persona-bar {
   display: flex;
@@ -472,6 +504,15 @@ select:disabled, input:disabled, button:disabled { color: var(--text-disabled); 
 .quiz-option .letter { font-weight: 700; color: var(--text-muted); width: 18px; flex-shrink: 0; }
 .quiz-option.correct .letter, .quiz-option.incorrect .letter { color: inherit; }
 .quiz-source { font-size: 12px; color: var(--text-muted); margin-top: 4px; margin-bottom: 18px; }
+
+/* Feedback por opción (modo test) */
+.quiz-option-row { display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; width: 100%; }
+.option-tag { font-size: 11.5px; font-weight: 700; padding: 1px 7px; border-radius: 999px; margin-left: auto; white-space: nowrap; }
+.option-tag.ok { background: var(--success-border); color: var(--success-bg); }
+.option-tag.bad { background: var(--error-border); color: var(--error-bg); }
+.option-tag.muted { background: var(--surface-2); color: var(--text-muted); }
+.option-explain { font-size: 12.5px; color: var(--text-secondary); margin-top: 4px; line-height: 1.45; }
+.review-opt .option-explain { color: var(--text-secondary); margin-top: 2px; }
 
 .quiz-feedback {
   border-radius: 9px;
