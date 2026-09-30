@@ -1,0 +1,39 @@
+name: Vigilancia normativa bomberos
+
+on:
+  schedule:
+    # Todos los días a las 07:30 UTC (~08:30/09:30 hora española según horario de verano).
+    # Cámbialo si quieres otra hora (formato cron estándar, en UTC).
+    - cron: "30 7 * * *"
+  workflow_dispatch: {}  # permite lanzarlo a mano desde la pestaña "Actions" de GitHub para probarlo
+
+permissions:
+  contents: write  # necesario para que el workflow pueda guardar (commitear) las nuevas copias de las páginas
+
+jobs:
+  vigilar:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Clonar el repositorio
+        uses: actions/checkout@v4
+
+      - name: Configurar Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Ejecutar la vigilancia
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GMAIL_USER: ${{ secrets.GMAIL_USER }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          ALERT_EMAIL_TO: ${{ secrets.ALERT_EMAIL_TO }}
+        run: python vigilancia/check_normativa.py
+
+      - name: Guardar las copias actualizadas de las páginas (commit automático)
+        run: |
+          git config user.name "vigilancia-normativa-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add vigilancia/snapshots/
+          git diff --cached --quiet || git commit -m "Actualiza copias de vigilancia normativa [automático]"
+          git push
