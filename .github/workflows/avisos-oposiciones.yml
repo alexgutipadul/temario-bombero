@@ -1,0 +1,48 @@
+name: Avisos de oposiciones de Bombero
+
+on:
+  schedule:
+    # Dos veces al día (horas UTC); ajusta si quieres más o menos frecuencia.
+    - cron: "0 6,18 * * *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  comprobar:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Clonar repositorio
+        uses: actions/checkout@v4
+
+      - name: Configurar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Instalar dependencias del script
+        working-directory: scripts
+        run: npm install --no-audit --no-fund
+
+      - name: Comprobar nuevas oposiciones
+        working-directory: scripts
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          GMAIL_USER: ${{ secrets.GMAIL_USER }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          AVISO_EMAIL_DESTINO: ${{ secrets.AVISO_EMAIL_DESTINO }}
+        run: node check-oposiciones.js
+
+      - name: Guardar qué convocatorias ya se han visto
+        run: |
+          if [ -n "$(git status --porcelain data/avisos-oposiciones-seen.json)" ]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git add data/avisos-oposiciones-seen.json
+            git commit -m "Actualizar registro de oposiciones vistas [skip ci]"
+            git push
+          else
+            echo "Sin cambios que guardar."
+          fi
