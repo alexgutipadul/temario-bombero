@@ -926,25 +926,25 @@ function showPersonaGate(existing) {
     overlay.innerHTML = `
       <div class="gate-card">
         <h2>¿Quién eres?</h2>
-        <div class="sub">${CLOUD_ENABLED ? "Entra con tu cuenta de Google. Si es la primera vez, tu alta quedará pendiente de aprobación por el administrador." : "Esta página es solo para personas autorizadas. Escribe tu nombre y tu PIN — si no están en la lista de acceso, no podrás entrar."}</div>
+        <div class="sub">${CLOUD_ENABLED ? "Entra con tu cuenta de Google, o con tu nombre y PIN si ya tienes uno asignado. Si es la primera vez con Google, tu alta quedará pendiente de aprobación por el administrador." : "Esta página es solo para personas autorizadas. Escribe tu nombre y tu PIN — si no están en la lista de acceso, no podrás entrar."}</div>
         ${FIREBASE_ENABLED ? `
         <button type="button" class="btn google-btn" id="gate-google-btn">
           <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true"><path fill="#4285F4" d="M17.64 9.2c0-.64-.06-1.25-.16-1.84H9v3.48h4.84a4.14 4.14 0 0 1-1.8 2.72v2.26h2.9c1.7-1.57 2.7-3.88 2.7-6.62z"/><path fill="#34A853" d="M9 18c2.43 0 4.47-.8 5.96-2.18l-2.9-2.26c-.8.54-1.84.86-3.06.86-2.35 0-4.34-1.59-5.05-3.72H.96v2.33A9 9 0 0 0 9 18z"/><path fill="#FBBC05" d="M3.95 10.7A5.4 5.4 0 0 1 3.67 9c0-.59.1-1.16.28-1.7V4.97H.96A9 9 0 0 0 0 9c0 1.45.35 2.83.96 4.03l2.99-2.33z"/><path fill="#EA4335" d="M9 3.58c1.32 0 2.51.45 3.44 1.35l2.58-2.58C13.46.89 11.43 0 9 0A9 9 0 0 0 .96 4.97l2.99 2.33C4.66 5.17 6.65 3.58 9 3.58z"/></svg>
           ${CLOUD_ENABLED ? "Continuar con Google" : "Iniciar sesión con Google"}
         </button>
-        ${CLOUD_ENABLED ? "" : `<div class="gate-divider"><span>o con nombre y PIN</span></div>`}
+        ${false ? "" : `<div class="gate-divider"><span>o con nombre y PIN</span></div>`}
         ` : ""}
-        ${CLOUD_ENABLED ? "" : `
+        ${false ? "" : `
         <input type="text" id="gate-name-input" placeholder="Tu nombre" value="${existing ? escapeHtml(existing.nombre) : ""}" autofocus>
         <input type="password" id="gate-pin-input" placeholder="Tu PIN" inputmode="numeric" maxlength="8">
         `}
         <div class="gate-error" id="gate-persona-error"></div>
-        ${CLOUD_ENABLED ? "" : `<button class="btn" id="gate-persona-btn">Continuar</button>`}
+        ${false ? "" : `<button class="btn" id="gate-persona-btn">Continuar</button>`}
       </div>
     `;
     overlay.style.display = "flex";
     const err = document.getElementById("gate-persona-error");
-    if (!CLOUD_ENABLED) {
+    {
       const nameInput = document.getElementById("gate-name-input");
       const pinInput = document.getElementById("gate-pin-input");
       const submit = () => {
