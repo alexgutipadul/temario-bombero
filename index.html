@@ -6,9 +6,12 @@
 <title>Temario Bombero · Almería</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%9A%92%3C/text%3E%3C/svg%3E">
 <link rel="stylesheet" href="style.css">
-<!-- Firebase (solo para el botón "Iniciar sesión con Google"; si no se configura, el resto de la app funciona igual con nombre+PIN) -->
+<!-- Firebase (login con Google + registro con aprobación + sincronización de progreso + avisos).
+     Si FIREBASE_CONFIG no está rellenado en app.js, todo esto se desactiva solo y la app
+     sigue funcionando igual que siempre con nombre+PIN y progreso solo en este dispositivo. -->
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 </head>
 <body>
 <div id="gate-overlay"></div>
@@ -23,16 +26,19 @@
       <button class="nav-tab" data-view="test">Test</button>
       <button class="nav-tab" data-view="plan">Plan</button>
       <button class="nav-tab" data-view="progreso">Progreso</button>
+      <button class="nav-tab" data-view="admin" id="nav-tab-admin" style="display:none">Admin</button>
     </div>
     <div id="tema-list"></div>
   </div>
   <div id="main-col">
     <div id="persona-bar"></div>
+    <div id="avisos-panel" class="avisos-panel" style="display:none"></div>
     <div id="main">
       <div id="view-temario" class="view"><div id="content-wrap"></div></div>
       <div id="view-test" class="view" style="display:none"></div>
       <div id="view-plan" class="view" style="display:none"></div>
       <div id="view-progreso" class="view" style="display:none"></div>
+      <div id="view-admin" class="view" style="display:none"></div>
     </div>
   </div>
 </div>

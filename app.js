@@ -1,9 +1,22 @@
 /* Temario Bombero Almería — plataforma privada, independiente (hosting propio).
-   Estado: se guarda en localStorage de cada navegador. Para pasar el progreso
-   de un dispositivo a otro usa los botones «Exportar»/«Importar» de la barra
-   superior (descargan/cargan un pequeño fichero .json). */
 
-/* ---------- Lista cerrada de usuarios autorizados ----------
+   Dos modos de funcionamiento, según si FIREBASE_CONFIG (más abajo) está relleno:
+
+   - SIN Firebase configurado (como hasta ahora): acceso cerrado por nombre+PIN contra
+     ALLOWED_USERS, o por Google contra ALLOWED_GOOGLE_EMAILS. Todo el progreso se guarda
+     solo en localStorage de cada navegador; para pasarlo de un dispositivo a otro hay que
+     usar los botones «Exportar»/«Importar» de la barra superior.
+
+   - CON Firebase + Firestore configurado: cualquiera puede darse de alta con su cuenta de
+     Google, pero queda pendiente de aprobación hasta que el administrador (ADMIN_EMAIL) lo
+     apruebe desde la pestaña "Admin" de la propia web. El progreso se sincroniza en la nube
+     (Firestore) y se ve igual en cualquier dispositivo donde inicies sesión. Ver
+     FIRESTORE_SETUP.md para los pasos de configuración.
+
+   ALLOWED_USERS/ALLOWED_GOOGLE_EMAILS de abajo solo se usan mientras Firebase no esté
+   configurado; sirven de red de respaldo y no hace falta tocarlas si activas Firestore. */
+
+/* ---------- Lista cerrada de usuarios autorizados (solo sin Firestore) ----------
    SOLO estas personas pueden entrar (nombre + PIN exactos). NADIE puede
    crearse una cuenta nueva por su cuenta: si el nombre+PIN no está aquí,
    la app rechaza el acceso. Para añadir o quitar a alguien, edita esta
@@ -11,12 +24,114 @@
    El nombre no distingue mayúsculas/acentos; el PIN sí debe coincidir exacto. */
 const ALLOWED_USERS = [
   { name: "alex.gutipadul@gmail.com", pin: "6807" },
-  { name: "Juanma", pin: "4072" },
+  { name: "Juanma Martinez Membrives", pin: "6531" },
+  // { name: "NombreDeTuAmigo", pin: "1234" },  // descomenta y edita para añadir a alguien
 ];
 
 function findAllowedUser(nombre, pin) {
   const n = slug(nombre || "");
   return ALLOWED_USERS.find(u => slug(u.name) === n && u.pin === (pin || "").trim());
+}
+
+/* ---------- Inicio de sesión con Google (opcional, vía Firebase Authentication) ----------
+   SOLO estos correos de Google pueden entrar con el botón "Iniciar sesión con Google" —
+   igual de cerrado que la lista ALLOWED_USERS de arriba, pero por email en vez de PIN.
+   Para añadir o quitar a alguien, edita esta lista y vuelve a subir este fichero. */
+const ALLOWED_GOOGLE_EMAILS = [
+  "alex.gutipadul@gmail.com",
+  // "amigo@gmail.com",  // descomenta y edita para autorizar a alguien más con Google
+];
+
+/* Rellena esto con el "firebaseConfig" que te da la consola de Firebase al registrar
+   la app web (Configuración del proyecto → Tus apps → </> Web). Mientras estos valores
+   sigan siendo los de ejemplo ("TU_..."), el botón de Google se oculta automáticamente
+   y la app funciona igual que siempre con nombre+PIN — no hace falta tocar nada más. */
+const FIREBASE_CONFIG = {
+  apiKey: "TU_API_KEY",
+  authDomain: "TU_PROYECTO.firebaseapp.com",
+  projectId: "TU_PROYECTO",
+  appId: "TU_APP_ID",
+};
+
+const FIREBASE_ENABLED = !Object.values(FIREBASE_CONFIG).some(v => String(v).startsWith("TU_"));
+if (FIREBASE_ENABLED && window.firebase) {
+  firebase.initializeApp(FIREBASE_CONFIG);
+}
+
+/* ---------- Firestore: registro con alta pendiente + sincronización de progreso + avisos ----------
+   Si Firestore está disponible (FIREBASE_CONFIG relleno y firebase-firestore-compat.js cargado),
+   CUALQUIERA puede darse de alta con su cuenta de Google, pero queda en estado "pendiente"
+   hasta que el administrador (ADMIN_EMAIL) la apruebe desde la pestaña "Admin" de la propia
+   plataforma. Si Firestore no está disponible, la app sigue funcionando exactamente igual que
+   antes: nombre+PIN o Google contra la lista cerrada ALLOWED_GOOGLE_EMAILS, todo solo local. */
+const ADMIN_EMAIL = "alex.gutipadul@gmail.com";
+let firestoreDb = null;
+if (FIREBASE_ENABLED && window.firebase && firebase.firestore) {
+  try { firestoreDb = firebase.firestore(); } catch (e) { firestoreDb = null; }
+}
+const CLOUD_ENABLED = !!firestoreDb;
+
+function findAllowedGoogleUser(email) {
+  const e = (email || "").trim().toLowerCase();
+  return ALLOWED_GOOGLE_EMAILS.map(x => x.toLowerCase()).includes(e) ? e : null;
+}
+
+/* Crea (si no existe) el documento usuarios/{uid} en Firestore. La primera vez que entra el
+   ADMIN_EMAIL queda aprobado y marcado como admin automáticamente; cualquier otro correo nuevo
+   entra como "pendiente" y no puede usar la app hasta que el admin lo apruebe. */
+async function ensureUserDoc(user) {
+  const ref = firestoreDb.collection("usuarios").doc(user.uid);
+  const snap = await ref.get();
+  if (snap.exists) return snap.data();
+  const email = (user.email || "").trim().toLowerCase();
+  const isAdmin = email === ADMIN_EMAIL.toLowerCase();
+  const data = {
+    email,
+    nombre: user.displayName || email,
+    photoURL: user.photoURL || null,
+    estado: isAdmin ? "aprobado" : "pendiente",
+    admin: isAdmin,
+    creadoEn: firebase.firestore.FieldValue.serverTimestamp(),
+  };
+  await ref.set(data);
+  return data;
+}
+
+async function fetchUserDoc(uid) {
+  const snap = await firestoreDb.collection("usuarios").doc(uid).get();
+  return snap.exists ? snap.data() : null;
+}
+
+async function signInWithGoogle() {
+  const provider = new firebase.auth.GoogleAuthProvider();
+  const result = await firebase.auth().signInWithPopup(provider);
+  const user = result.user;
+  const email = (user.email || "").trim().toLowerCase();
+
+  if (!CLOUD_ENABLED) {
+    // Sin Firestore: comportamiento antiguo, lista cerrada fija en el código.
+    const allowed = findAllowedGoogleUser(email);
+    if (!allowed) {
+      await firebase.auth().signOut();
+      throw new Error(`La cuenta de Google ${email || ""} no está autorizada. Habla con el administrador de la plataforma.`);
+    }
+    return { email: allowed, nombre: user.displayName || allowed, google: true };
+  }
+
+  // Con Firestore: registro con alta pendiente de aprobación.
+  const datos = await ensureUserDoc(user);
+  if (datos.estado === "rechazado" || datos.estado === "baja") {
+    await firebase.auth().signOut();
+    throw new Error("Tu acceso a esta plataforma no está autorizado. Habla con el administrador.");
+  }
+  return {
+    email,
+    nombre: user.displayName || datos.nombre || email,
+    google: true,
+    uid: user.uid,
+    estado: datos.estado,
+    admin: !!datos.admin,
+  };
 }
 
 /* ---------- Registro de accesos (para que el administrador vea quién entra) ----------
@@ -66,6 +181,8 @@ let TEMARIO = null;
 let PREGUNTAS = null;
 let personaLocalKey = null; // clave de localStorage para el progreso de esta persona
 let saveTimer = null;
+let currentUid = null;       // uid de Firebase Auth cuando hay sesión con Google + Firestore
+let cloudSyncEnabled = false; // true cuando este usuario concreto está aprobado y puede sincronizar
 
 /* ============================= Persistencia ============================= */
 function todayStr() {
@@ -77,14 +194,29 @@ function scheduleSave() {
   saveTimer = setTimeout(flushSave, 500);
 }
 
-function flushSave() {
+async function flushSave() {
   const badge = document.getElementById("sync-badge");
   try {
     if (personaLocalKey) lsSet(personaLocalKey, JSON.stringify(STATE));
-    if (badge) { badge.textContent = "💾 Guardado en este dispositivo"; badge.className = "sync-badge local"; }
   } catch (e) {
-    console.error("Error guardando progreso:", e);
+    console.error("Error guardando progreso localmente:", e);
     if (badge) { badge.textContent = "⚠ No se pudo guardar"; badge.className = "sync-badge err"; }
+    return;
+  }
+  if (!cloudSyncEnabled || !currentUid) {
+    if (badge) { badge.textContent = "💾 Guardado en este dispositivo"; badge.className = "sync-badge local"; }
+    return;
+  }
+  try {
+    if (badge) { badge.textContent = "☁ Sincronizando…"; badge.className = "sync-badge"; }
+    await firestoreDb.collection("progreso").doc(currentUid).set({
+      ...STATE,
+      actualizadoEn: firebase.firestore.FieldValue.serverTimestamp(),
+    });
+    if (badge) { badge.textContent = "☁ Sincronizado"; badge.className = "sync-badge cloud"; }
+  } catch (e) {
+    console.error("Error sincronizando progreso:", e);
+    if (badge) { badge.textContent = "💾 Guardado solo en este dispositivo"; badge.className = "sync-badge local"; }
   }
 }
 
@@ -418,7 +550,7 @@ function renderTestSetup() {
         <h3>Modo</h3>
         <div class="field-row">
           <label>Nº de preguntas</label>
-          <input type="number" id="num-preguntas" min="5" max="200" value="20">
+          <input type="number" id="num-preguntas" min="5" max="200" value="30">
         </div>
         <div class="field-row">
           <label>Tiempo límite (min, 0 = sin límite)</label>
@@ -485,7 +617,7 @@ function renderTestSetup() {
   renderTemaChips();
 
   document.getElementById("btn-start-quiz").onclick = () => {
-    const n = parseInt(document.getElementById("num-preguntas").value, 10) || 20;
+    const n = parseInt(document.getElementById("num-preguntas").value, 10) || 30;
     const limitMin = parseInt(document.getElementById("tiempo-limite").value, 10) || 0;
     const soloFalladas = document.getElementById("solo-falladas").checked;
     let pool = PREGUNTAS.filter(p => selectedBloques.has("todos") || selectedBloques.has(p.bloqueId));
@@ -774,6 +906,7 @@ function showView(name) {
   if (name === "test") renderTestSetup();
   if (name === "plan") renderPlan();
   if (name === "progreso") renderProgreso();
+  if (name === "admin") renderAdminPanel();
   markActivity();
 }
 
@@ -793,38 +926,105 @@ function showPersonaGate(existing) {
     overlay.innerHTML = `
       <div class="gate-card">
         <h2>¿Quién eres?</h2>
-        <div class="sub">Esta página es solo para personas autorizadas. Escribe tu nombre y tu PIN — si no están en la lista de acceso, no podrás entrar.</div>
+        <div class="sub">${CLOUD_ENABLED ? "Entra con tu cuenta de Google. Si es la primera vez, tu alta quedará pendiente de aprobación por el administrador." : "Esta página es solo para personas autorizadas. Escribe tu nombre y tu PIN — si no están en la lista de acceso, no podrás entrar."}</div>
+        ${FIREBASE_ENABLED ? `
+        <button type="button" class="btn google-btn" id="gate-google-btn">
+          <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true"><path fill="#4285F4" d="M17.64 9.2c0-.64-.06-1.25-.16-1.84H9v3.48h4.84a4.14 4.14 0 0 1-1.8 2.72v2.26h2.9c1.7-1.57 2.7-3.88 2.7-6.62z"/><path fill="#34A853" d="M9 18c2.43 0 4.47-.8 5.96-2.18l-2.9-2.26c-.8.54-1.84.86-3.06.86-2.35 0-4.34-1.59-5.05-3.72H.96v2.33A9 9 0 0 0 9 18z"/><path fill="#FBBC05" d="M3.95 10.7A5.4 5.4 0 0 1 3.67 9c0-.59.1-1.16.28-1.7V4.97H.96A9 9 0 0 0 0 9c0 1.45.35 2.83.96 4.03l2.99-2.33z"/><path fill="#EA4335" d="M9 3.58c1.32 0 2.51.45 3.44 1.35l2.58-2.58C13.46.89 11.43 0 9 0A9 9 0 0 0 .96 4.97l2.99 2.33C4.66 5.17 6.65 3.58 9 3.58z"/></svg>
+          ${CLOUD_ENABLED ? "Continuar con Google" : "Iniciar sesión con Google"}
+        </button>
+        ${CLOUD_ENABLED ? "" : `<div class="gate-divider"><span>o con nombre y PIN</span></div>`}
+        ` : ""}
+        ${CLOUD_ENABLED ? "" : `
         <input type="text" id="gate-name-input" placeholder="Tu nombre" value="${existing ? escapeHtml(existing.nombre) : ""}" autofocus>
         <input type="password" id="gate-pin-input" placeholder="Tu PIN" inputmode="numeric" maxlength="8">
+        `}
         <div class="gate-error" id="gate-persona-error"></div>
-        <button class="btn" id="gate-persona-btn">Continuar</button>
+        ${CLOUD_ENABLED ? "" : `<button class="btn" id="gate-persona-btn">Continuar</button>`}
       </div>
     `;
     overlay.style.display = "flex";
-    const nameInput = document.getElementById("gate-name-input");
-    const pinInput = document.getElementById("gate-pin-input");
     const err = document.getElementById("gate-persona-error");
-    const submit = () => {
-      const nombre = nameInput.value.trim();
-      const pin = pinInput.value.trim();
-      if (!nombre || !pin) {
-        err.textContent = "Escribe tu nombre y tu PIN.";
-        return;
-      }
-      const match = findAllowedUser(nombre, pin);
-      if (!match) {
-        err.textContent = "Nombre o PIN no autorizados. Habla con el administrador de la plataforma.";
-        pinInput.value = "";
-        pinInput.focus();
-        return;
-      }
-      overlay.style.display = "none";
-      logAccess(match.name);
-      resolve({ nombre: match.name, pin });
-    };
-    document.getElementById("gate-persona-btn").onclick = submit;
-    pinInput.addEventListener("keydown", (e) => { if (e.key === "Enter") submit(); });
+    if (!CLOUD_ENABLED) {
+      const nameInput = document.getElementById("gate-name-input");
+      const pinInput = document.getElementById("gate-pin-input");
+      const submit = () => {
+        const nombre = nameInput.value.trim();
+        const pin = pinInput.value.trim();
+        if (!nombre || !pin) {
+          err.textContent = "Escribe tu nombre y tu PIN.";
+          return;
+        }
+        const match = findAllowedUser(nombre, pin);
+        if (!match) {
+          err.textContent = "Nombre o PIN no autorizados. Habla con el administrador de la plataforma.";
+          pinInput.value = "";
+          pinInput.focus();
+          return;
+        }
+        overlay.style.display = "none";
+        logAccess(match.name);
+        resolve({ nombre: match.name, pin });
+      };
+      document.getElementById("gate-persona-btn").onclick = submit;
+      pinInput.addEventListener("keydown", (e) => { if (e.key === "Enter") submit(); });
+    }
+    if (FIREBASE_ENABLED) {
+      document.getElementById("gate-google-btn").onclick = async () => {
+        err.textContent = "";
+        try {
+          const g = await signInWithGoogle();
+          if (g.estado === "pendiente") {
+            showPendingScreen(g, resolve);
+            return;
+          }
+          overlay.style.display = "none";
+          logAccess(g.email);
+          resolve(g);
+        } catch (e) {
+          err.textContent = e.message || "No se pudo iniciar sesión con Google.";
+        }
+      };
+    }
   });
+}
+
+/* Pantalla de espera para altas nuevas con Firestore: el usuario ya ha entrado con Google
+   pero el administrador todavía no ha aprobado su acceso. Reintenta comprobar el estado
+   cada vez que pulsa el botón, sin necesidad de recargar la página. */
+function showPendingScreen(g, resolveOuter) {
+  const overlay = document.getElementById("gate-overlay");
+  overlay.innerHTML = `
+    <div class="gate-card">
+      <h2>Alta pendiente de aprobación</h2>
+      <div class="sub">Hola ${escapeHtml(g.nombre || g.email)}. Tu solicitud de acceso se ha registrado correctamente, pero todavía tiene que aprobarla el administrador de la plataforma. Vuelve a intentarlo en un rato, o avisa al administrador.</div>
+      <div class="gate-error" id="gate-pending-error"></div>
+      <button class="btn" id="gate-pending-retry">Comprobar de nuevo</button>
+      <button class="link-btn" id="gate-pending-logout" style="margin-top:10px">Cerrar sesión</button>
+    </div>
+  `;
+  overlay.style.display = "flex";
+  document.getElementById("gate-pending-retry").onclick = async () => {
+    const errEl = document.getElementById("gate-pending-error");
+    try {
+      const datos = await fetchUserDoc(g.uid);
+      if (!datos) { errEl.textContent = "No se ha encontrado tu solicitud."; return; }
+      if (datos.estado === "aprobado") {
+        overlay.style.display = "none";
+        logAccess(g.email);
+        resolveOuter({ ...g, estado: "aprobado", admin: !!datos.admin, nombre: datos.nombre || g.nombre });
+      } else if (datos.estado === "rechazado" || datos.estado === "baja") {
+        errEl.textContent = "Tu acceso no ha sido autorizado por el administrador.";
+      } else {
+        errEl.textContent = "Todavía está pendiente de aprobación.";
+      }
+    } catch (e) {
+      errEl.textContent = "No se pudo comprobar el estado. Revisa tu conexión.";
+    }
+  };
+  document.getElementById("gate-pending-logout").onclick = async () => {
+    try { await firebase.auth().signOut(); } catch (e) {}
+    location.reload();
+  };
 }
 
 function renderPersonaBadge() {
@@ -834,13 +1034,19 @@ function renderPersonaBadge() {
   bar.innerHTML = `
     <span class="persona-name">${escapeHtml(nombre || "")}</span>
     <span id="sync-badge" class="sync-badge">…</span>
+    <button id="btn-avisos" class="avisos-btn" title="Avisos" style="display:none">
+      🔔<span id="avisos-badge" class="avisos-badge" style="display:none">0</span>
+    </button>
     <button id="btn-export" class="link-btn" title="Descargar tu progreso como fichero">Exportar</button>
     <button id="btn-import" class="link-btn" title="Cargar un progreso exportado antes">Importar</button>
     <button id="btn-switch-persona" class="link-btn" title="Cambiar de usuario">Cambiar</button>
     <input type="file" id="import-file-input" accept="application/json" style="display:none">
   `;
-  document.getElementById("btn-switch-persona").onclick = () => {
+  document.getElementById("btn-switch-persona").onclick = async () => {
     lsRemove("tb_persona");
+    if (FIREBASE_ENABLED && firebase.auth().currentUser) {
+      try { await firebase.auth().signOut(); } catch (e) {}
+    }
     location.reload();
   };
   document.getElementById("btn-export").onclick = exportProgress;
@@ -886,28 +1092,86 @@ async function initPersonaAndState() {
   let persona = null;
   try { persona = JSON.parse(lsGet("tb_persona") || "null"); } catch (e) {}
 
-  // Revalida siempre contra la lista cerrada de usuarios: si a alguien se le quita
-  // el acceso (se borra de ALLOWED_USERS), la próxima vez que abra la página en
-  // cualquier dispositivo se le pide entrar de nuevo y ya no podrá.
   if (persona) {
-    const stillAllowed = ALLOWED_USERS.some(u => slug(u.name) === slug(persona.nombre) && simpleHash(u.pin) === persona.pinHash);
-    if (!stillAllowed) { persona = null; lsRemove("tb_persona"); }
+    if (CLOUD_ENABLED && persona.google) {
+      // Con Firestore: revalida SIEMPRE en vivo contra el documento del usuario, para que
+      // una aprobación, un rechazo o una baja hechos por el admin surtan efecto en el
+      // siguiente acceso desde cualquier dispositivo, sin depender de lo que hubiera en caché.
+      if (!persona.uid) {
+        persona = null; lsRemove("tb_persona");
+      } else {
+        try {
+          const datos = await fetchUserDoc(persona.uid);
+          if (!datos || datos.estado === "rechazado" || datos.estado === "baja") {
+            persona = null; lsRemove("tb_persona");
+            try { await firebase.auth().signOut(); } catch (e) {}
+          } else if (datos.estado === "pendiente") {
+            persona.estado = "pendiente";
+          } else {
+            persona.estado = "aprobado";
+            persona.admin = !!datos.admin;
+            persona.nombre = datos.nombre || persona.nombre;
+          }
+        } catch (e) {
+          // Sin conexión: deja entrar con lo último conocido en caché en vez de bloquear.
+        }
+      }
+    } else if (!CLOUD_ENABLED && persona.google) {
+      // Sin Firestore: comportamiento antiguo, lista cerrada fija en el código.
+      if (!findAllowedGoogleUser(persona.email)) { persona = null; lsRemove("tb_persona"); }
+    } else if (!persona.google) {
+      const stillAllowed = ALLOWED_USERS.some(u => slug(u.name) === slug(persona.nombre) && simpleHash(u.pin) === persona.pinHash);
+      if (!stillAllowed) { persona = null; lsRemove("tb_persona"); }
+    }
   }
 
   if (!persona) {
     const entered = await showPersonaGate(null);
-    persona = { nombre: entered.nombre, pinHash: simpleHash(entered.pin) };
+    persona = entered.google
+      ? { nombre: entered.nombre, email: entered.email, google: true, uid: entered.uid, estado: entered.estado, admin: entered.admin }
+      : { nombre: entered.nombre, pinHash: simpleHash(entered.pin) };
+    lsSet("tb_persona", JSON.stringify(persona));
+  } else if (persona.google && persona.estado === "pendiente") {
+    const g = await new Promise((resolve) => showPendingScreen(persona, resolve));
+    persona = { ...persona, ...g };
     lsSet("tb_persona", JSON.stringify(persona));
   } else {
-    logAccess(persona.nombre);
+    logAccess(persona.google ? persona.email : persona.nombre);
   }
 
-  personaLocalKey = "tb_state_v3_" + slug(persona.nombre) + "_" + persona.pinHash;
+  personaLocalKey = persona.google
+    ? "tb_state_v3_google_" + slug(persona.email)
+    : "tb_state_v3_" + slug(persona.nombre) + "_" + persona.pinHash;
   loadLocalFallback();
+
+  currentUid = persona.google ? (persona.uid || null) : null;
+  cloudSyncEnabled = CLOUD_ENABLED && persona.google && persona.estado === "aprobado" && !!currentUid;
+
+  if (cloudSyncEnabled) {
+    try {
+      const snap = await firestoreDb.collection("progreso").doc(currentUid).get();
+      if (snap.exists) {
+        // La nube es la copia autorizada entre dispositivos: si hay datos en la nube, sustituyen
+        // al progreso local de este navegador (que puede estar desactualizado).
+        STATE = { ...defaultState(), ...snap.data() };
+      } else if (personaLocalKey && lsGet(personaLocalKey)) {
+        // Primera vez con sincronización: sube lo que ya hubiera en este dispositivo.
+        scheduleSave();
+      }
+    } catch (e) {
+      console.error("No se pudo leer el progreso en la nube, se usa el local:", e);
+    }
+  }
 
   renderPersonaBadge();
   const badge = document.getElementById("sync-badge");
-  if (badge) { badge.textContent = "💾 Guardado en este dispositivo"; badge.className = "sync-badge local"; }
+  if (badge) {
+    if (cloudSyncEnabled) { badge.textContent = "☁ Sincronizado"; badge.className = "sync-badge cloud"; }
+    else { badge.textContent = "💾 Guardado en este dispositivo"; badge.className = "sync-badge local"; }
+  }
+
+  document.getElementById("nav-tab-admin").style.display = (CLOUD_ENABLED && persona.admin) ? "" : "none";
+  if (CLOUD_ENABLED && cloudSyncEnabled) initAvisos();
 }
 
 function loadLocalFallback() {
@@ -922,6 +1186,171 @@ function refreshCurrentView() {
   const name = active ? active.dataset.view : "temario";
   if (name === "temario" && currentTemaId) openTema(currentTemaId);
   else showView(name);
+}
+
+/* ============================= Avisos (notificaciones dentro de la plataforma) =============================
+   Colección Firestore "avisos": { titulo, cuerpo, fecha (serverTimestamp) }. La publica el
+   administrador desde la pestaña Admin — sirven para avisar de cambios legislativos u otras
+   actualizaciones de contenido, no para avisos de tipo distinto. Se muestran con una campanita
+   con contador de no leídos; "leído" se guarda solo en este navegador (localStorage). */
+function avisosLastSeenKey() {
+  return "tb_avisos_visto_" + (currentUid || slug(personaLabel() || "yo"));
+}
+
+async function initAvisos() {
+  const btn = document.getElementById("btn-avisos");
+  if (!btn) return;
+  btn.style.display = "";
+  btn.onclick = (e) => { e.stopPropagation(); toggleAvisosPanel(); };
+  document.addEventListener("click", (e) => {
+    const panel = document.getElementById("avisos-panel");
+    if (panel.style.display !== "none" && !panel.contains(e.target) && e.target !== btn) {
+      panel.style.display = "none";
+    }
+  });
+  await refreshAvisosBadge();
+}
+
+async function fetchAvisos() {
+  const snap = await firestoreDb.collection("avisos").orderBy("fecha", "desc").limit(50).get();
+  return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+}
+
+async function refreshAvisosBadge() {
+  try {
+    const avisos = await fetchAvisos();
+    const lastSeen = parseInt(lsGet(avisosLastSeenKey()) || "0", 10);
+    const noLeidos = avisos.filter(a => (a.fecha && a.fecha.toMillis ? a.fecha.toMillis() : 0) > lastSeen).length;
+    const badge = document.getElementById("avisos-badge");
+    if (badge) {
+      if (noLeidos > 0) { badge.textContent = String(noLeidos); badge.style.display = ""; }
+      else badge.style.display = "none";
+    }
+    return avisos;
+  } catch (e) {
+    console.error("No se pudieron cargar los avisos:", e);
+    return [];
+  }
+}
+
+async function toggleAvisosPanel() {
+  const panel = document.getElementById("avisos-panel");
+  if (panel.style.display !== "none") { panel.style.display = "none"; return; }
+  const avisos = await refreshAvisosBadge();
+  panel.innerHTML = avisos.length
+    ? avisos.map(a => `
+        <div class="aviso-item">
+          <div class="aviso-titulo">${escapeHtml(a.titulo || "")}</div>
+          <div class="aviso-fecha">${a.fecha && a.fecha.toDate ? a.fecha.toDate().toLocaleString("es-ES") : ""}</div>
+          <div class="aviso-cuerpo">${escapeHtml(a.cuerpo || "")}</div>
+        </div>`).join("")
+    : `<div class="sub" style="padding:14px">Todavía no hay avisos.</div>`;
+  panel.style.display = "block";
+  let maxMillis = 0;
+  for (const a of avisos) {
+    const m = a.fecha && a.fecha.toMillis ? a.fecha.toMillis() : 0;
+    if (m > maxMillis) maxMillis = m;
+  }
+  if (maxMillis > 0) lsSet(avisosLastSeenKey(), String(maxMillis));
+  const badge = document.getElementById("avisos-badge");
+  if (badge) badge.style.display = "none";
+}
+
+/* ============================= Panel de administración ============================= */
+async function renderAdminPanel() {
+  const el = document.getElementById("view-admin");
+  if (!CLOUD_ENABLED) {
+    el.innerHTML = `<div class="sub" style="padding:20px">Panel de administración no disponible: la plataforma no tiene Firestore configurado.</div>`;
+    return;
+  }
+  el.innerHTML = `<div class="sub" style="padding:20px">Cargando…</div>`;
+  let usuarios = [];
+  try {
+    const snap = await firestoreDb.collection("usuarios").get();
+    usuarios = snap.docs.map(d => ({ uid: d.id, ...d.data() }));
+  } catch (e) {
+    el.innerHTML = `<div class="sub" style="padding:20px">No se pudo cargar la lista de usuarios: ${escapeHtml(e.message || "")}</div>`;
+    return;
+  }
+  const pendientes = usuarios.filter(u => u.estado === "pendiente");
+  const aprobados = usuarios.filter(u => u.estado === "aprobado");
+  const otros = usuarios.filter(u => u.estado === "rechazado" || u.estado === "baja");
+
+  function userRow(u, acciones) {
+    return `<div class="admin-row">
+      <div class="admin-row-info">
+        <div class="admin-row-nombre">${escapeHtml(u.nombre || u.email)}${u.admin ? " · admin" : ""}</div>
+        <div class="admin-row-email">${escapeHtml(u.email)}</div>
+      </div>
+      <div class="admin-row-actions">${acciones}</div>
+    </div>`;
+  }
+
+  el.innerHTML = `
+    <div class="view-inner">
+      <h2>Administración de altas</h2>
+      <div class="card">
+        <h3>Pendientes de aprobar (${pendientes.length})</h3>
+        ${pendientes.length ? pendientes.map(u => userRow(u, `
+          <button class="btn btn-sm" data-admin-action="aprobar" data-uid="${u.uid}">Aprobar</button>
+          <button class="link-btn" data-admin-action="rechazar" data-uid="${u.uid}">Rechazar</button>
+        `)).join("") : `<div class="sub">No hay altas pendientes.</div>`}
+      </div>
+      <div class="card">
+        <h3>Usuarios activos (${aprobados.length})</h3>
+        ${aprobados.length ? aprobados.map(u => userRow(u, u.admin ? "" : `
+          <button class="link-btn" data-admin-action="baja" data-uid="${u.uid}">Dar de baja</button>
+        `)).join("") : `<div class="sub">No hay usuarios activos todavía.</div>`}
+      </div>
+      ${otros.length ? `<div class="card">
+        <h3>Rechazados / dados de baja (${otros.length})</h3>
+        ${otros.map(u => userRow(u, `<button class="link-btn" data-admin-action="aprobar" data-uid="${u.uid}">Reactivar</button>`)).join("")}
+      </div>` : ""}
+      <div class="card">
+        <h3>Publicar un aviso</h3>
+        <div class="sub">Se verá en la campanita de todos los usuarios aprobados (por ejemplo, un cambio legislativo).</div>
+        <div class="field-row"><label>Título</label><input type="text" id="admin-aviso-titulo" placeholder="Ej: Actualización del Tema 5 (Levante)"></div>
+        <div class="field-row"><label>Texto</label><textarea id="admin-aviso-cuerpo" rows="3" placeholder="Explica brevemente el cambio…"></textarea></div>
+        <button class="btn" id="admin-aviso-publicar">Publicar aviso</button>
+        <div class="gate-error" id="admin-aviso-error"></div>
+      </div>
+    </div>
+  `;
+
+  el.querySelectorAll("[data-admin-action]").forEach(btn => {
+    btn.onclick = async () => {
+      const uid = btn.dataset.uid;
+      const action = btn.dataset.adminAction;
+      const estado = action === "aprobar" ? "aprobado" : action === "rechazar" ? "rechazado" : "baja";
+      btn.disabled = true;
+      try {
+        await firestoreDb.collection("usuarios").doc(uid).update({ estado });
+        renderAdminPanel();
+      } catch (e) {
+        alert("No se pudo actualizar: " + (e.message || e));
+        btn.disabled = false;
+      }
+    };
+  });
+
+  document.getElementById("admin-aviso-publicar").onclick = async () => {
+    const titulo = document.getElementById("admin-aviso-titulo").value.trim();
+    const cuerpo = document.getElementById("admin-aviso-cuerpo").value.trim();
+    const errEl = document.getElementById("admin-aviso-error");
+    if (!titulo) { errEl.textContent = "Ponle un título al aviso."; return; }
+    try {
+      await firestoreDb.collection("avisos").add({
+        titulo, cuerpo,
+        fecha: firebase.firestore.FieldValue.serverTimestamp(),
+      });
+      document.getElementById("admin-aviso-titulo").value = "";
+      document.getElementById("admin-aviso-cuerpo").value = "";
+      errEl.style.color = "var(--good)";
+      errEl.textContent = "Aviso publicado.";
+    } catch (e) {
+      errEl.textContent = "No se pudo publicar: " + (e.message || e);
+    }
+  };
 }
 
 /* ============================= Init ============================= */
