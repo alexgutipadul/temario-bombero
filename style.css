@@ -1,45 +1,50 @@
 :root {
   color-scheme: light;
-  /* Superficies */
-  --surface-0: #ffffff;
-  --surface-1: #f7f7f5;
-  --surface-2: #eeeeec;
-  --border: #dedcd6;
+  /* Superficies: blanco cálido, no gris frío */
+  --surface-0: #fffaf8;
+  --surface-1: #faf1ee;
+  --surface-2: #f1e2dc;
+  --border: #e3cec5;
 
   /* Texto */
-  --text-primary: #171715;
-  --text-secondary: #55534d;
-  --text-muted: #8a887f;
-  --text-disabled: #b6b4ab;
+  --text-primary: #241613;
+  --text-secondary: #5c4540;
+  --text-muted: #8f7873;
+  --text-disabled: #c3b2ac;
   --text-on-accent: #ffffff;
 
-  /* Marca / interacción */
-  --accent: #2a78d6;          /* uso como texto/enlace/borde sobre superficies neutras */
-  --accent-solid: #1d5dab;    /* uso como fondo de botón/relleno con texto blanco encima */
-  --accent-soft: #eaf2fc;     /* fondo tenue (p.ej. tema activo en el menú) */
-  --accent-on-soft: #1a4a85;  /* texto legible sobre --accent-soft */
-  --focus-ring: #1d5dab;
+  /* Marca / interacción — paleta "bombero": rojo parque de bomberos + ámbar llama,
+     sobre superficies de blanco cálido. Los colores de estado (éxito/aviso/error/info)
+     se mantienen en familias de tono distintas al rojo de marca para que nunca se
+     confundan un botón/enlace con una alerta real. */
+  --accent: #b7301c;          /* uso como texto/enlace/borde sobre superficies neutras */
+  --accent-solid: #96250f;    /* uso como fondo de botón/relleno con texto blanco encima */
+  --accent-soft: #fbe6de;     /* fondo tenue (p.ej. tema activo en el menú) */
+  --accent-on-soft: #7a2411;  /* texto legible sobre --accent-soft */
+  --focus-ring: #b7301c;
 
-  /* Estados semánticos: cada uno con fondo + texto ya emparejados para contraste AA */
+  /* Estados semánticos: cada uno con fondo + texto ya emparejados para contraste AA.
+     --critical se mantiene en un rojo distinto (más carmín/rosado) del --accent
+     (más teja/ladrillo) para que una alerta nunca se confunda con un botón de marca. */
   --success-bg: #e3f7e6;
   --success-text: #0c7a1f;
   --success-border: #a9dfb2;
-  --error-bg: #fbe6e6;
-  --error-text: #a02020;
-  --error-border: #eab3b3;
-  --warning-bg: #fef3dc;
-  --warning-text: #8a5a00;
-  --warning-border: #f0cd8a;
-  --info-bg: #eaf2fc;
-  --info-text: #171715;
-  --info-border: #2a78d6;
+  --error-bg: #fde3df;
+  --error-text: #a3221a;
+  --error-border: #eab0a7;
+  --warning-bg: #fef1da;
+  --warning-text: #8a5600;
+  --warning-border: #f0c983;
+  --info-bg: #e7f0fb;
+  --info-text: #171311;
+  --info-border: #2a6fc9;
 
   --highlight-bg: #fde68a;
-  --highlight-text: #171715;
+  --highlight-text: #171311;
 
   --good: #0ca30c;
   --warning: #d98300;
-  --critical: #d03b3b;
+  --critical: #c81e3a;
 
   --radius: 10px;
   --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
@@ -48,82 +53,82 @@
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     color-scheme: dark;
-    --surface-0: #141413;
-    --surface-1: #1c1c1a;
-    --surface-2: #262623;
-    --border: #38372f;
+    --surface-0: #1a1310;
+    --surface-1: #221816;
+    --surface-2: #2e211d;
+    --border: #42302a;
 
-    --text-primary: #f5f4f0;
-    --text-secondary: #c3c2b7;
-    --text-muted: #8f8d81;
-    --text-disabled: #5a594f;
+    --text-primary: #f5ece8;
+    --text-secondary: #d6c3bc;
+    --text-muted: #a68d85;
+    --text-disabled: #6b5953;
     --text-on-accent: #ffffff;
 
-    --accent: #6ba6ec;
-    --accent-solid: #2f6fc4;
-    --accent-soft: #1d2c40;
-    --accent-on-soft: #7fb4f0;
-    --focus-ring: #6ba6ec;
+    --accent: #e2663f;
+    --accent-solid: #c8471f;
+    --accent-soft: #3a2017;
+    --accent-on-soft: #f0906a;
+    --focus-ring: #e2663f;
 
-    --success-bg: #10331a;
-    --success-text: #3fd66b;
-    --success-border: #1e5030;
-    --error-bg: #3a1414;
-    --error-text: #e66767;
-    --error-border: #5c2323;
-    --warning-bg: #3a2f10;
-    --warning-text: #eda100;
-    --warning-border: #5c4a1a;
-    --info-bg: #1d2c40;
-    --info-text: #f5f4f0;
-    --info-border: #6ba6ec;
+    --success-bg: #16321d;
+    --success-text: #4ad480;
+    --success-border: #234d2c;
+    --error-bg: #3a1a16;
+    --error-text: #ef7a6a;
+    --error-border: #5c2e24;
+    --warning-bg: #3a2c10;
+    --warning-text: #f0ab3a;
+    --warning-border: #5c441a;
+    --info-bg: #16243a;
+    --info-text: #f5ece8;
+    --info-border: #6fa0e8;
 
-    --highlight-bg: #6b5715;
+    --highlight-bg: #6b5115;
     --highlight-text: #ffe9a8;
 
-    --good: #1fbf5c;
-    --warning: #eda100;
-    --critical: #e66767;
+    --good: #28c76f;
+    --warning: #f0ab3a;
+    --critical: #ef5277;
   }
 }
 :root[data-theme="dark"] {
   color-scheme: dark;
-  --surface-0: #141413;
-  --surface-1: #1c1c1a;
-  --surface-2: #262623;
-  --border: #38372f;
+  --surface-0: #1a1310;
+  --surface-1: #221816;
+  --surface-2: #2e211d;
+  --border: #42302a;
 
-  --text-primary: #f5f4f0;
-  --text-secondary: #c3c2b7;
-  --text-muted: #8f8d81;
-  --text-disabled: #5a594f;
+  --text-primary: #f5ece8;
+  --text-secondary: #d6c3bc;
+  --text-muted: #a68d85;
+  --text-disabled: #6b5953;
   --text-on-accent: #ffffff;
 
-  --accent: #6ba6ec;
-  --accent-solid: #2f6fc4;
-  --accent-soft: #1d2c40;
-  --accent-on-soft: #7fb4f0;
-  --focus-ring: #6ba6ec;
+  --accent: #e2663f;
+  --accent-solid: #c8471f;
+  --accent-soft: #3a2017;
+  --accent-on-soft: #f0906a;
+  --focus-ring: #e2663f;
 
-  --success-bg: #10331a;
-  --success-text: #3fd66b;
-  --success-border: #1e5030;
-  --error-bg: #3a1414;
-  --error-text: #e66767;
-  --error-border: #5c2323;
-  --warning-bg: #3a2f10;
-  --warning-text: #eda100;
-  --warning-border: #5c4a1a;
-  --info-bg: #1d2c40;
-  --info-text: #f5f4f0;
-  --info-border: #6ba6ec;
+  --success-bg: #16321d;
+  --success-text: #4ad480;
+  --success-border: #234d2c;
+  --error-bg: #3a1a16;
+  --error-text: #ef7a6a;
+  --error-border: #5c2e24;
+  --warning-bg: #3a2c10;
+  --warning-text: #f0ab3a;
+  --warning-border: #5c441a;
+  --info-bg: #16243a;
+  --info-text: #f5ece8;
+  --info-border: #6fa0e8;
 
-  --highlight-bg: #6b5715;
+  --highlight-bg: #6b5115;
   --highlight-text: #ffe9a8;
 
-  --good: #1fbf5c;
-  --warning: #eda100;
-  --critical: #e66767;
+  --good: #28c76f;
+  --warning: #f0ab3a;
+  --critical: #ef5277;
 }
 
 * { box-sizing: border-box; }
