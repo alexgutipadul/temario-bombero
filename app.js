@@ -380,19 +380,46 @@ function renderSidebarList(filterText) {
   for (const b of TEMARIO.bloques) {
     const group = document.createElement("div");
     group.className = "bloque-group";
+    const colapsado = bloqueColapsado(b.id);
     const title = document.createElement("div");
-    title.className = "bloque-title";
-    title.textContent = b.nombre;
+    title.className = "bloque-title" + (colapsado ? " colapsado" : "");
+    const dominadosEnBloque = b.temas.filter(t => statusOf(t.id) === "dominado").length;
+    title.innerHTML = `<span class="bloque-caret">${colapsado ? "▸" : "▾"}</span><span class="bloque-title-text">${escapeHtml(b.nombre)}</span><span class="bloque-mini-progreso">${dominadosEnBloque}/${b.temas.length}</span>`;
+    title.onclick = () => {
+      const nuevo = !bloqueColapsado(b.id);
+      setBloqueColapsado(b.id, nuevo);
+      renderSidebarList(filterText);
+    };
     group.appendChild(title);
+    const itemsWrap = document.createElement("div");
+    itemsWrap.className = "bloque-items" + (colapsado ? " oculto" : "");
     for (const t of b.temas) {
       const item = document.createElement("div");
-      item.className = "tema-item" + (t.id === currentTemaId ? " active" : "");
+      item.className = `tema-item status-border-${statusOf(t.id)}` + (t.id === currentTemaId ? " active" : "");
       item.innerHTML = `<span class="tema-num">${t.numero ?? "Z"}</span><span>${t.titulo.replace(/^BLOQUE ESPECÍFICO — TEMA \d+\.\s*/i, "").replace(/^Tema \d+\.\s*/i, "")}</span><span class="status-dot status-${statusOf(t.id)}"></span>`;
       item.onclick = () => { showView("temario"); openTema(t.id); };
-      group.appendChild(item);
+      itemsWrap.appendChild(item);
     }
+    group.appendChild(itemsWrap);
     container.appendChild(group);
   }
+}
+
+function bloquesColapsadosKey() {
+  return "tb_bloques_colapsados_" + (currentUid || slug(personaLabel() || "yo"));
+}
+function bloqueColapsado(bloqueId) {
+  const raw = lsGet(bloquesColapsadosKey());
+  if (!raw) return false;
+  try { return (JSON.parse(raw) || []).includes(bloqueId); } catch { return false; }
+}
+function setBloqueColapsado(bloqueId, colapsado) {
+  const raw = lsGet(bloquesColapsadosKey());
+  let arr = [];
+  try { arr = JSON.parse(raw) || []; } catch { arr = []; }
+  arr = arr.filter(id => id !== bloqueId);
+  if (colapsado) arr.push(bloqueId);
+  lsSet(bloquesColapsadosKey(), JSON.stringify(arr));
 }
 
 function renderSearchResults(term) {
@@ -875,6 +902,19 @@ function renderProgreso() {
     return `<div class="bar-row"><div class="bar-label">${b.nombre}</div><div class="bar-track"><div class="bar-fill" style="width:${pct}%;background:${color}"></div></div><div class="bar-val">${pct}%</div></div>`;
   }).join("") || `<div class="sub">Todavía no has hecho ningún test.</div>`;
 
+  const heatmapHtml = TEMARIO.bloques.map(b => `
+    <div class="heatmap-row">
+      <div class="heatmap-label" title="${escapeHtml(b.nombre)}">${escapeHtml(b.nombre)}</div>
+      <div class="heatmap-cells">
+        ${b.temas.map(t => {
+          const st = statusOf(t.id);
+          const label = t.titulo.replace(/^BLOQUE ESPECÍFICO — TEMA \d+\.\s*/i, "").replace(/^Tema \d+\.\s*/i, "");
+          return `<div class="heatmap-cell heatmap-${st}" data-tema-id="${t.id}" title="${escapeHtml(label)} — ${st === "dominado" ? "Dominado" : st === "en_estudio" ? "En estudio" : "Pendiente"}"></div>`;
+        }).join("")}
+      </div>
+    </div>
+  `).join("");
+
   el.innerHTML = `
     <div class="panel">
       <h1>Progreso</h1>
@@ -894,8 +934,122 @@ function renderProgreso() {
         <h3>Precisión por bloque</h3>
         ${barsHtml}
       </div>
+      <div class="card">
+        <h3>Mapa de calor del temario</h3>
+        <div class="sub">Cada cuadro es un tema. Verde = dominado, amarillo = en estudio, gris = pendiente. Pasa el ratón para ver cuál es y haz clic para abrirlo.</div>
+        <div class="heatmap">${heatmapHtml}</div>
+      </div>
     </div>
   `;
+  el.querySelectorAll(".heatmap-cell").forEach(cell => {
+    cell.onclick = () => { showView("temario"); openTema(cell.dataset.temaId); };
+  });
+}
+
+/* ============================= Modo flashcards (repaso rápido, pensado para móvil) ============================= */
+let flashState = null;
+
+function renderFlashcardSetup() {
+  const el = document.getElementById("view-flashcards");
+  const bloques = bloqueOptions();
+  el.innerHTML = `
+    <div class="panel">
+      <h1>Flashcards</h1>
+      <div class="sub">Repaso rápido tipo tarjetas: lee la pregunta, piensa la respuesta y dale la vuelta a la tarjeta. Ideal para ratos sueltos desde el móvil.</div>
+      <div class="card">
+        <h3>Ámbito — bloques</h3>
+        <div class="chip-group" id="chip-bloques-flash">
+          <div class="chip selected" data-id="todos">Todos los bloques</div>
+          ${bloques.map(b => `<div class="chip" data-id="${b.id}">${b.nombre}</div>`).join("")}
+        </div>
+      </div>
+      <div class="card">
+        <div class="field-row">
+          <label>Solo preguntas falladas</label>
+          <input type="checkbox" id="flash-solo-falladas">
+        </div>
+        <div class="field-row">
+          <label>Mezclar orden</label>
+          <input type="checkbox" id="flash-mezclar" checked>
+        </div>
+      </div>
+      <button class="btn" id="btn-start-flash">Empezar</button>
+    </div>
+  `;
+  let selectedBloques = new Set(["todos"]);
+  el.querySelectorAll("#chip-bloques-flash .chip").forEach(chip => {
+    chip.onclick = () => {
+      const id = chip.dataset.id;
+      if (id === "todos") {
+        selectedBloques = new Set(["todos"]);
+      } else {
+        selectedBloques.delete("todos");
+        if (selectedBloques.has(id)) selectedBloques.delete(id); else selectedBloques.add(id);
+        if (selectedBloques.size === 0) selectedBloques.add("todos");
+      }
+      el.querySelectorAll("#chip-bloques-flash .chip").forEach(c => c.classList.toggle("selected", selectedBloques.has(c.dataset.id)));
+    };
+  });
+  document.getElementById("btn-start-flash").onclick = () => {
+    const soloFalladas = document.getElementById("flash-solo-falladas").checked;
+    const mezclar = document.getElementById("flash-mezclar").checked;
+    let pool = PREGUNTAS.filter(p => selectedBloques.has("todos") || selectedBloques.has(p.bloqueId));
+    if (soloFalladas) {
+      pool = pool.filter(p => {
+        const rec = STATE.preguntas[p.id];
+        return rec && rec.lastResult === false;
+      });
+    }
+    if (!pool.length) { alert("No hay preguntas para ese filtro."); return; }
+    pool = pool.slice();
+    if (mezclar) shuffle(pool);
+    startFlashcards(pool);
+  };
+}
+
+function startFlashcards(questions) {
+  flashState = { questions, index: 0, revealed: false };
+  renderFlashcard();
+}
+
+function renderFlashcard() {
+  const el = document.getElementById("view-flashcards");
+  const q = flashState.questions[flashState.index];
+  el.innerHTML = `
+    <div class="panel">
+      <div class="flash-wrap">
+        <div class="flash-progress">Tarjeta ${flashState.index + 1} de ${flashState.questions.length} — ${escapeHtml(q.temaLabel || "")}</div>
+        <div class="flash-card" id="flash-card">
+          <div class="flash-eyebrow">Pregunta</div>
+          <div class="flash-pregunta">${escapeHtml(q.enunciado)}</div>
+          ${flashState.revealed ? `
+            <div class="flash-respuesta">✓ ${"abcd"[q.correctaIndex]}) ${escapeHtml(q.opciones[q.correctaIndex])}</div>
+            ${q.explicacion ? `<div class="flash-explicacion">${escapeHtml(q.explicacion)}</div>` : ""}
+          ` : `<div class="flash-hint">Toca la tarjeta para ver la respuesta</div>`}
+        </div>
+        <div class="flash-actions">
+          <button class="btn secondary" id="btn-flash-prev" ${flashState.index === 0 ? "disabled" : ""}>Anterior</button>
+          <button class="btn secondary" id="btn-flash-flip">${flashState.revealed ? "Ocultar respuesta" : "Ver respuesta"}</button>
+          <button class="btn" id="btn-flash-next">${flashState.index === flashState.questions.length - 1 ? "Terminar" : "Siguiente"}</button>
+        </div>
+      </div>
+    </div>
+  `;
+  const flip = () => { flashState.revealed = !flashState.revealed; renderFlashcard(); };
+  document.getElementById("flash-card").onclick = flip;
+  document.getElementById("btn-flash-flip").onclick = (e) => { e.stopPropagation(); flip(); };
+  document.getElementById("btn-flash-prev").onclick = (e) => {
+    e.stopPropagation();
+    flashState.index--; flashState.revealed = false; renderFlashcard();
+  };
+  document.getElementById("btn-flash-next").onclick = (e) => {
+    e.stopPropagation();
+    if (flashState.index === flashState.questions.length - 1) {
+      showView("flashcards");
+    } else {
+      flashState.index++; flashState.revealed = false; renderFlashcard();
+    }
+  };
 }
 
 /* ============================= Navegación entre vistas ============================= */
@@ -906,6 +1060,7 @@ function showView(name) {
   if (name === "test") renderTestSetup();
   if (name === "plan") renderPlan();
   if (name === "progreso") renderProgreso();
+  if (name === "flashcards") renderFlashcardSetup();
   if (name === "admin") renderAdminPanel();
   markActivity();
 }
@@ -932,14 +1087,12 @@ function showPersonaGate(existing) {
           <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true"><path fill="#4285F4" d="M17.64 9.2c0-.64-.06-1.25-.16-1.84H9v3.48h4.84a4.14 4.14 0 0 1-1.8 2.72v2.26h2.9c1.7-1.57 2.7-3.88 2.7-6.62z"/><path fill="#34A853" d="M9 18c2.43 0 4.47-.8 5.96-2.18l-2.9-2.26c-.8.54-1.84.86-3.06.86-2.35 0-4.34-1.59-5.05-3.72H.96v2.33A9 9 0 0 0 9 18z"/><path fill="#FBBC05" d="M3.95 10.7A5.4 5.4 0 0 1 3.67 9c0-.59.1-1.16.28-1.7V4.97H.96A9 9 0 0 0 0 9c0 1.45.35 2.83.96 4.03l2.99-2.33z"/><path fill="#EA4335" d="M9 3.58c1.32 0 2.51.45 3.44 1.35l2.58-2.58C13.46.89 11.43 0 9 0A9 9 0 0 0 .96 4.97l2.99 2.33C4.66 5.17 6.65 3.58 9 3.58z"/></svg>
           ${CLOUD_ENABLED ? "Continuar con Google" : "Iniciar sesión con Google"}
         </button>
-        ${false ? "" : `<div class="gate-divider"><span>o con nombre y PIN</span></div>`}
+        <div class="gate-divider"><span>o con nombre y PIN</span></div>
         ` : ""}
-        ${false ? "" : `
         <input type="text" id="gate-name-input" placeholder="Tu nombre" value="${existing ? escapeHtml(existing.nombre) : ""}" autofocus>
         <input type="password" id="gate-pin-input" placeholder="Tu PIN" inputmode="numeric" maxlength="8">
-        `}
         <div class="gate-error" id="gate-persona-error"></div>
-        ${false ? "" : `<button class="btn" id="gate-persona-btn">Continuar</button>`}
+        <button class="btn" id="gate-persona-btn">Continuar</button>
       </div>
     `;
     overlay.style.display = "flex";
