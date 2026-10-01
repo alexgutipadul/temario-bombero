@@ -1,0 +1,29 @@
+{
+  "_comentario": "Páginas que el workflow revisa en busca de nuevas convocatorias de oposiciones de Bombero en Almería y Granada (consorcios provinciales y ayuntamientos). Añade o quita URLs aquí; no hace falta tocar el script.",
+  "fuentes": [
+    {
+      "id": "canalop-almeria",
+      "provincia": "Almería",
+      "nombre": "CanalOposiciones - Bombero Almería",
+      "url": "https://www.canaloposiciones.com/ultimas_oposiciones_bombero_almeria-idpu56idpr4ap1.htm"
+    },
+    {
+      "id": "canalop-granada",
+      "provincia": "Granada",
+      "nombre": "CanalOposiciones - Bombero Granada",
+      "url": "https://www.canaloposiciones.com/ultimas_oposiciones_bombero_granada-idpu56idpr18ap1.htm"
+    },
+    {
+      "id": "buscaop-almeria",
+      "provincia": "Almería",
+      "nombre": "BuscaOposiciones - Bombero Almería",
+      "url": "https://www.buscaoposiciones.com/ultimas_oposiciones_bombero_almeria-idpu56idpr4ap1.htm"
+    },
+    {
+      "id": "buscaop-granada",
+      "provincia": "Granada",
+      "nombre": "BuscaOposiciones - Bombero Granada",
+      "url": "https://www.buscaoposiciones.com/ultimas_oposiciones_bombero_granada-idpu56idpr18ap1.htm"
+    }
+  ]
+}
