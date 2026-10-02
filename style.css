@@ -232,6 +232,15 @@ select:focus-visible,
 .sync-badge.ok, .sync-badge.cloud { color: var(--success-text); }
 .sync-badge.local { color: var(--warning-text); }
 .sync-badge.err { color: var(--error-text); }
+.exam-countdown {
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--accent-on-soft);
+  background: var(--accent-soft);
+  padding: 3px 9px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
 
 /* ---------- Avisos (notificaciones dentro de la plataforma) ---------- */
 .avisos-btn {

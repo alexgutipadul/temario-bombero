@@ -198,6 +198,33 @@ function lsRemove(key) {
   try { localStorage.removeItem(key); } catch (e) {}
 }
 
+/* ---------- Tema claro/oscuro manual ----------
+   Por defecto se sigue la preferencia del sistema operativo (ya cubierto solo con CSS). Si el
+   usuario fuerza un tema con el botón de la barra de persona, se guarda aquí y se aplica como
+   atributo data-theme en <html>, que tiene prioridad sobre la preferencia del sistema. */
+function temaEfectivo() {
+  const guardado = lsGet("tb_theme");
+  if (guardado === "light" || guardado === "dark") return guardado;
+  return (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches) ? "dark" : "light";
+}
+(function aplicarTemaGuardado() {
+  const guardado = lsGet("tb_theme");
+  if (guardado === "light" || guardado === "dark") {
+    document.documentElement.setAttribute("data-theme", guardado);
+  }
+})();
+function toggleTema() {
+  const nuevo = temaEfectivo() === "dark" ? "light" : "dark";
+  lsSet("tb_theme", nuevo);
+  document.documentElement.setAttribute("data-theme", nuevo);
+  actualizarBotonTema();
+}
+function actualizarBotonTema() {
+  const btn = document.getElementById("btn-theme-toggle");
+  if (!btn) return;
+  btn.textContent = temaEfectivo() === "dark" ? "☀️ Claro" : "🌙 Oscuro";
+}
+
 function defaultState() {
   return {
     temaStatus: {},
@@ -888,6 +915,7 @@ function renderPlan() {
     STATE.examDate = e.target.value || null;
     scheduleSave();
     renderPlan();
+    renderExamCountdownBadge();
   };
 }
 
@@ -917,6 +945,11 @@ function renderProgreso() {
     totalCorrect += STATE.preguntas[id].timesCorrect;
   }
   const pctAciertos = totalAsked ? Math.round((totalCorrect / totalAsked) * 100) : null;
+
+  const numFalladas = PREGUNTAS.filter(p => {
+    const rec = STATE.preguntas[p.id];
+    return rec && rec.lastResult === false;
+  }).length;
 
   const porBloque = {};
   for (const p of PREGUNTAS) {
@@ -970,6 +1003,13 @@ function renderProgreso() {
         <div class="card stat-tile"><div class="num">${computeStreak()}</div><div class="lbl">días seguidos de estudio</div></div>
         <div class="card stat-tile"><div class="num">${pctAciertos !== null ? pctAciertos + "%" : "—"}</div><div class="lbl">aciertos en tests (${totalAsked} preguntas)</div></div>
       </div>
+      <div class="card" style="display:flex; align-items:center; justify-content:space-between; gap:14px; flex-wrap:wrap;">
+        <div>
+          <h3 style="margin:0 0 2px;">Repasar falladas</h3>
+          <div class="sub" style="margin:0;">${numFalladas ? `${numFalladas} pregunta${numFalladas === 1 ? "" : "s"} marcada${numFalladas === 1 ? "" : "s"} como fallada${numFalladas === 1 ? "" : "s"} en su último intento.` : "No tienes preguntas falladas pendientes de repasar."}</div>
+        </div>
+        <button class="btn" id="btn-repasar-falladas" ${numFalladas ? "" : "disabled"}>Repasar ahora</button>
+      </div>
       <div class="card">
         <h3>Estado del temario</h3>
         <div class="bar-row"><div class="bar-label">Dominado</div><div class="bar-track"><div class="bar-fill" style="width:${(dominados/temas.length*100)}%;background:var(--good)"></div></div><div class="bar-val">${dominados}</div></div>
@@ -998,6 +1038,18 @@ function renderProgreso() {
   el.querySelectorAll(".heatmap-cell").forEach(cell => {
     cell.onclick = () => { showView("temario"); openTema(cell.dataset.temaId); };
   });
+  const btnRepasar = document.getElementById("btn-repasar-falladas");
+  if (btnRepasar) {
+    btnRepasar.onclick = () => {
+      const pool = PREGUNTAS.filter(p => {
+        const rec = STATE.preguntas[p.id];
+        return rec && rec.lastResult === false;
+      });
+      if (!pool.length) return;
+      showView("test");
+      startQuiz(shuffle(pool.slice()), 0);
+    };
+  }
 }
 
 /* ============================= Modo flashcards (repaso rápido, pensado para móvil) ============================= */
@@ -1241,10 +1293,12 @@ function renderPersonaBadge() {
   if (!bar) return;
   bar.innerHTML = `
     <span class="persona-name">${escapeHtml(nombre || "")}</span>
+    <span id="exam-countdown-badge" class="exam-countdown" style="display:none"></span>
     <span id="sync-badge" class="sync-badge">…</span>
     <button id="btn-avisos" class="avisos-btn" title="Avisos" style="display:none">
       🔔<span id="avisos-badge" class="avisos-badge" style="display:none">0</span>
     </button>
+    <button id="btn-theme-toggle" class="link-btn" title="Cambiar entre tema claro y oscuro"></button>
     <button id="btn-export" class="link-btn" title="Descargar tu progreso como fichero">Exportar</button>
     <button id="btn-import" class="link-btn" title="Cargar un progreso exportado antes">Importar</button>
     <button id="btn-switch-persona" class="link-btn" title="Cambiar de usuario">Cambiar</button>
@@ -1260,6 +1314,24 @@ function renderPersonaBadge() {
   document.getElementById("btn-export").onclick = exportProgress;
   document.getElementById("btn-import").onclick = () => document.getElementById("import-file-input").click();
   document.getElementById("import-file-input").addEventListener("change", importProgressFile);
+  document.getElementById("btn-theme-toggle").onclick = toggleTema;
+  actualizarBotonTema();
+  renderExamCountdownBadge();
+}
+
+/* ---------- Cuenta atrás del examen (visible siempre en la barra de persona) ---------- */
+function examDiasRestantes() {
+  if (!STATE.examDate) return null;
+  const diff = (new Date(STATE.examDate) - new Date(todayStr())) / 86400000;
+  return Math.max(0, Math.ceil(diff));
+}
+function renderExamCountdownBadge() {
+  const el = document.getElementById("exam-countdown-badge");
+  if (!el) return;
+  const dias = examDiasRestantes();
+  if (dias === null) { el.style.display = "none"; return; }
+  el.style.display = "";
+  el.textContent = dias === 0 ? "📅 ¡Examen hoy!" : `📅 ${dias} ${dias === 1 ? "día" : "días"} para el examen`;
 }
 
 /* ---------- Exportar / importar progreso (para pasarlo entre dispositivos) ---------- */
@@ -1476,14 +1548,17 @@ async function renderAdminPanel() {
   el.innerHTML = `<div class="sub" style="padding:20px">Cargando…</div>`;
   let usuarios = [];
   let cfgGeneral = {};
+  let avisosPublicados = [];
   try {
-    const [snapUsuarios, snapConfig] = await Promise.all([
+    const [snapUsuarios, snapConfig, snapAvisos] = await Promise.all([
       firestoreDb.collection("usuarios").get(),
       firestoreDb.collection("config").doc("general").get(),
+      firestoreDb.collection("avisos").orderBy("fecha", "desc").limit(50).get(),
     ]);
     usuarios = snapUsuarios.docs.map(d => ({ uid: d.id, ...d.data() }));
     cfgGeneral = snapConfig.exists ? snapConfig.data() : {};
     configGeneralCache = cfgGeneral;
+    avisosPublicados = snapAvisos.docs.map(d => ({ id: d.id, ...d.data() }));
   } catch (e) {
     el.innerHTML = `<div class="sub" style="padding:20px">No se pudo cargar la lista de usuarios: ${escapeHtml(e.message || "")}</div>`;
     return;
@@ -1541,6 +1616,20 @@ async function renderAdminPanel() {
         <button class="btn" id="admin-aviso-publicar">Publicar aviso</button>
         <div class="gate-error" id="admin-aviso-error"></div>
       </div>
+      <div class="card">
+        <h3>Avisos publicados (${avisosPublicados.length})</h3>
+        ${avisosPublicados.length ? avisosPublicados.map(a => `
+          <div class="admin-row">
+            <div class="admin-row-info">
+              <div class="admin-row-nombre">${escapeHtml(a.titulo || "")}</div>
+              <div class="admin-row-email">${a.fecha && a.fecha.toDate ? a.fecha.toDate().toLocaleString("es-ES") : ""}${a.cuerpo ? " · " + escapeHtml(a.cuerpo).slice(0, 80) + (a.cuerpo.length > 80 ? "…" : "") : ""}</div>
+            </div>
+            <div class="admin-row-actions">
+              <button class="link-btn" data-aviso-borrar="${a.id}">Borrar</button>
+            </div>
+          </div>
+        `).join("") : `<div class="sub">Todavía no has publicado ningún aviso.</div>`}
+      </div>
     </div>
   `;
 
@@ -1572,6 +1661,20 @@ async function renderAdminPanel() {
         renderAdminPanel();
       } catch (e) {
         alert("No se pudo actualizar: " + (e.message || e));
+        btn.disabled = false;
+      }
+    };
+  });
+
+  el.querySelectorAll("[data-aviso-borrar]").forEach(btn => {
+    btn.onclick = async () => {
+      if (!confirm("¿Borrar este aviso? No se puede deshacer.")) return;
+      btn.disabled = true;
+      try {
+        await firestoreDb.collection("avisos").doc(btn.dataset.avisoBorrar).delete();
+        renderAdminPanel();
+      } catch (e) {
+        alert("No se pudo borrar: " + (e.message || e));
         btn.disabled = false;
       }
     };
