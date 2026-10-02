@@ -982,8 +982,11 @@ function renderProgreso() {
 
   // Peso de cada tema según el número de preguntas que tiene en el banco de exámenes:
   // ayuda a priorizar qué estudiar más a fondo y señala temas sin preguntas todavía.
+  // Se excluyen los temas-cajón de "pendientes de clasificar" (bloque "auxiliar"): no son
+  // temas reales del temario, son preguntas que todavía no tienen tema oficial asignado,
+  // así que no deben contar como si tuvieran peso en el examen.
   const conteoPreguntas = countByTema();
-  const temasPorPeso = allTemas().slice().sort((a, b) => (conteoPreguntas[b.id] || 0) - (conteoPreguntas[a.id] || 0));
+  const temasPorPeso = allTemas().filter(t => t.bloqueId !== "auxiliar").sort((a, b) => (conteoPreguntas[b.id] || 0) - (conteoPreguntas[a.id] || 0));
   const importanciaHtml = temasPorPeso.map((t, idx) => {
     const n = conteoPreguntas[t.id] || 0;
     const label = t.titulo.replace(/^BLOQUE ESPECÍFICO — TEMA \d+\.\s*/i, "").replace(/^Tema \d+\.\s*/i, "");
