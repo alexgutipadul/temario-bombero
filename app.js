@@ -71,6 +71,23 @@ if (FIREBASE_ENABLED && window.firebase && firebase.firestore) {
 }
 const CLOUD_ENABLED = !!firestoreDb;
 
+/* ---------- Configuración general (p.ej. abrir/cerrar altas nuevas) ----------
+   Vive en el documento config/general de Firestore. Si no existe el documento, o el
+   campo altasAbiertas no está puesto, se asume true (abiertas) para no romper el
+   comportamiento de antes de tener este interruptor. */
+let configGeneralCache = null;
+async function getConfigGeneral() {
+  if (!CLOUD_ENABLED) return { altasAbiertas: true };
+  if (configGeneralCache) return configGeneralCache;
+  try {
+    const snap = await firestoreDb.collection("config").doc("general").get();
+    configGeneralCache = snap.exists ? snap.data() : {};
+  } catch (e) {
+    configGeneralCache = {};
+  }
+  return configGeneralCache;
+}
+
 function findAllowedGoogleUser(email) {
   const e = (email || "").trim().toLowerCase();
   return ALLOWED_GOOGLE_EMAILS.map(x => x.toLowerCase()).includes(e) ? e : null;
@@ -85,6 +102,12 @@ async function ensureUserDoc(user) {
   if (snap.exists) return snap.data();
   const email = (user.email || "").trim().toLowerCase();
   const isAdmin = email === ADMIN_EMAIL.toLowerCase();
+  if (!isAdmin) {
+    const cfg = await getConfigGeneral();
+    if (cfg.altasAbiertas === false) {
+      throw new Error("ALTAS_CERRADAS");
+    }
+  }
   const data = {
     email,
     nombre: user.displayName || email,
@@ -119,7 +142,16 @@ async function signInWithGoogle() {
   }
 
   // Con Firestore: registro con alta pendiente de aprobación.
-  const datos = await ensureUserDoc(user);
+  let datos;
+  try {
+    datos = await ensureUserDoc(user);
+  } catch (e) {
+    await firebase.auth().signOut();
+    if (e && e.message === "ALTAS_CERRADAS") {
+      throw new Error("El administrador ha cerrado temporalmente las altas nuevas en esta plataforma. Inténtalo más adelante o contacta con él.");
+    }
+    throw e;
+  }
   if (datos.estado === "rechazado" || datos.estado === "baja") {
     await firebase.auth().signOut();
     throw new Error("Tu acceso a esta plataforma no está autorizado. Habla con el administrador.");
@@ -915,6 +947,20 @@ function renderProgreso() {
     </div>
   `).join("");
 
+  // Peso de cada tema según el número de preguntas que tiene en el banco de exámenes:
+  // ayuda a priorizar qué estudiar más a fondo y señala temas sin preguntas todavía.
+  const conteoPreguntas = countByTema();
+  const temasPorPeso = allTemas().slice().sort((a, b) => (conteoPreguntas[b.id] || 0) - (conteoPreguntas[a.id] || 0));
+  const importanciaHtml = temasPorPeso.map((t, idx) => {
+    const n = conteoPreguntas[t.id] || 0;
+    const label = t.titulo.replace(/^BLOQUE ESPECÍFICO — TEMA \d+\.\s*/i, "").replace(/^Tema \d+\.\s*/i, "");
+    return `<div class="importance-row" data-tema-id="${t.id}">
+      <div class="importance-rank">${idx + 1}.</div>
+      <div class="importance-label" title="${escapeHtml(t.bloqueNombre)}">${escapeHtml(label)}</div>
+      <div class="importance-count${n === 0 ? " low" : ""}">${n}</div>
+    </div>`;
+  }).join("");
+
   el.innerHTML = `
     <div class="panel">
       <h1>Progreso</h1>
@@ -939,8 +985,16 @@ function renderProgreso() {
         <div class="sub">Cada cuadro es un tema. Verde = dominado, amarillo = en estudio, gris = pendiente. Pasa el ratón para ver cuál es y haz clic para abrirlo.</div>
         <div class="heatmap">${heatmapHtml}</div>
       </div>
+      <div class="card">
+        <h3>Peso de los temas según nº de preguntas</h3>
+        <div class="sub">Cuantas más preguntas tiene un tema en el banco de exámenes, más peso suele tener realmente en el examen. Los que están a 0 son huecos del banco. Haz clic para abrir el tema.</div>
+        <div class="importance-list">${importanciaHtml}</div>
+      </div>
     </div>
   `;
+  el.querySelectorAll(".importance-row").forEach(row => {
+    row.onclick = () => { showView("temario"); openTema(row.dataset.temaId); };
+  });
   el.querySelectorAll(".heatmap-cell").forEach(cell => {
     cell.onclick = () => { showView("temario"); openTema(cell.dataset.temaId); };
   });
@@ -1325,7 +1379,9 @@ async function initPersonaAndState() {
   }
 
   document.getElementById("nav-option-admin").style.display = (CLOUD_ENABLED && persona.admin) ? "" : "none";
-  if (CLOUD_ENABLED && cloudSyncEnabled) initAvisos();
+  // El panel de avisos se muestra a cualquiera (login con PIN o con Google), no solo a
+  // quien tiene sincronización en la nube: son anuncios de lectura pública del administrador.
+  if (CLOUD_ENABLED) initAvisos();
 }
 
 function loadLocalFallback() {
@@ -1419,13 +1475,20 @@ async function renderAdminPanel() {
   }
   el.innerHTML = `<div class="sub" style="padding:20px">Cargando…</div>`;
   let usuarios = [];
+  let cfgGeneral = {};
   try {
-    const snap = await firestoreDb.collection("usuarios").get();
-    usuarios = snap.docs.map(d => ({ uid: d.id, ...d.data() }));
+    const [snapUsuarios, snapConfig] = await Promise.all([
+      firestoreDb.collection("usuarios").get(),
+      firestoreDb.collection("config").doc("general").get(),
+    ]);
+    usuarios = snapUsuarios.docs.map(d => ({ uid: d.id, ...d.data() }));
+    cfgGeneral = snapConfig.exists ? snapConfig.data() : {};
+    configGeneralCache = cfgGeneral;
   } catch (e) {
     el.innerHTML = `<div class="sub" style="padding:20px">No se pudo cargar la lista de usuarios: ${escapeHtml(e.message || "")}</div>`;
     return;
   }
+  const altasAbiertas = cfgGeneral.altasAbiertas !== false;
   const pendientes = usuarios.filter(u => u.estado === "pendiente");
   const aprobados = usuarios.filter(u => u.estado === "aprobado");
   const otros = usuarios.filter(u => u.estado === "rechazado" || u.estado === "baja");
@@ -1443,6 +1506,16 @@ async function renderAdminPanel() {
   el.innerHTML = `
     <div class="view-inner">
       <h2>Administración de altas</h2>
+      <div class="card">
+        <h3>Altas nuevas</h3>
+        <div class="field-row">
+          <label>Permitir que gente nueva se dé de alta con Google</label>
+          <input type="checkbox" id="admin-toggle-altas" ${altasAbiertas ? "checked" : ""}>
+        </div>
+        <div class="sub" id="admin-altas-sub">${altasAbiertas
+          ? "Abiertas: cualquiera con Google puede solicitar acceso (queda pendiente de tu aprobación abajo)."
+          : "Cerradas: nadie nuevo puede solicitar acceso ahora mismo. Los usuarios ya aprobados siguen entrando con normalidad."}</div>
+      </div>
       <div class="card">
         <h3>Pendientes de aprobar (${pendientes.length})</h3>
         ${pendientes.length ? pendientes.map(u => userRow(u, `
@@ -1470,6 +1543,23 @@ async function renderAdminPanel() {
       </div>
     </div>
   `;
+
+  document.getElementById("admin-toggle-altas").onchange = async (e) => {
+    const checked = e.target.checked;
+    e.target.disabled = true;
+    try {
+      await firestoreDb.collection("config").doc("general").set({ altasAbiertas: checked }, { merge: true });
+      configGeneralCache = { ...configGeneralCache, altasAbiertas: checked };
+      document.getElementById("admin-altas-sub").textContent = checked
+        ? "Abiertas: cualquiera con Google puede solicitar acceso (queda pendiente de tu aprobación abajo)."
+        : "Cerradas: nadie nuevo puede solicitar acceso ahora mismo. Los usuarios ya aprobados siguen entrando con normalidad.";
+    } catch (e2) {
+      alert("No se pudo cambiar: " + (e2.message || e2));
+      e.target.checked = !checked;
+    } finally {
+      e.target.disabled = false;
+    }
+  };
 
   el.querySelectorAll("[data-admin-action]").forEach(btn => {
     btn.onclick = async () => {
