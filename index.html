@@ -22,12 +22,14 @@
       <input id="search-box" type="text" placeholder="Buscar en todo el temario…">
     </div>
     <div id="nav-tabs">
-      <button class="nav-tab active" data-view="temario">Temario</button>
-      <button class="nav-tab" data-view="test">Test</button>
-      <button class="nav-tab" data-view="flashcards">Flashcards</button>
-      <button class="nav-tab" data-view="plan">Plan</button>
-      <button class="nav-tab" data-view="progreso">Progreso</button>
-      <button class="nav-tab" data-view="admin" id="nav-tab-admin" style="display:none">Admin</button>
+      <select id="nav-select" class="nav-select">
+        <option value="temario">📘 Temario</option>
+        <option value="test">📝 Test</option>
+        <option value="flashcards">🗂️ Flashcards</option>
+        <option value="plan">📅 Plan</option>
+        <option value="progreso">📊 Progreso</option>
+        <option value="admin" id="nav-option-admin" style="display:none">⚙️ Admin</option>
+      </select>
     </div>
     <div id="tema-list"></div>
   </div>

@@ -1056,7 +1056,8 @@ function renderFlashcard() {
 function showView(name) {
   document.querySelectorAll(".view").forEach(v => v.style.display = "none");
   document.getElementById("view-" + name).style.display = "block";
-  document.querySelectorAll(".nav-tab").forEach(t => t.classList.toggle("active", t.dataset.view === name));
+  const navSelect = document.getElementById("nav-select");
+  if (navSelect) navSelect.value = name;
   if (name === "test") renderTestSetup();
   if (name === "plan") renderPlan();
   if (name === "progreso") renderProgreso();
@@ -1323,7 +1324,7 @@ async function initPersonaAndState() {
     else { badge.textContent = "💾 Guardado en este dispositivo"; badge.className = "sync-badge local"; }
   }
 
-  document.getElementById("nav-tab-admin").style.display = (CLOUD_ENABLED && persona.admin) ? "" : "none";
+  document.getElementById("nav-option-admin").style.display = (CLOUD_ENABLED && persona.admin) ? "" : "none";
   if (CLOUD_ENABLED && cloudSyncEnabled) initAvisos();
 }
 
@@ -1335,8 +1336,8 @@ function loadLocalFallback() {
 }
 
 function refreshCurrentView() {
-  const active = document.querySelector(".nav-tab.active");
-  const name = active ? active.dataset.view : "temario";
+  const sel = document.getElementById("nav-select");
+  const name = sel ? sel.value : "temario";
   if (name === "temario" && currentTemaId) openTema(currentTemaId);
   else showView(name);
 }
@@ -1522,7 +1523,7 @@ async function init() {
   markActivity();
 
   document.getElementById("search-box").addEventListener("input", (e) => renderSidebarList(e.target.value));
-  document.querySelectorAll(".nav-tab").forEach(tab => tab.onclick = () => showView(tab.dataset.view));
+  document.getElementById("nav-select").addEventListener("change", (e) => showView(e.target.value));
 }
 
 init().catch(err => {
