@@ -543,7 +543,7 @@ function openTema(id) {
       <h1>${escapeHtml(cleanTitle)}</h1>
       <div class="tema-status-row">
         ${["pendiente", "en_estudio", "dominado"].map(s => `<button class="status-btn ${statusOf(id) === s ? "active-" + s : ""}" data-status="${s}">${s === "pendiente" ? "Pendiente" : s === "en_estudio" ? "En estudio" : "Dominado"}</button>`).join("")}
-        <button type="button" class="status-btn pdf-link" id="btn-download-pdf">⬇ Descargar PDF del tema</button>
+        ${tema.pdf ? `<a class="status-btn pdf-link" href="${tema.pdf}" download>⬇ Descargar PDF del tema</a><a class="status-btn pdf-link" href="${tema.pdf}" target="_blank" rel="noopener">↗ Abrir en otra pestaña</a>${tema.pdf_bloque ? `<a class="status-btn pdf-link" href="${tema.pdf_bloque}" download>🖨 Bloque completo para imprimir</a>` : ""}` : `<button type="button" class="status-btn pdf-link" id="btn-download-pdf">⬇ Descargar PDF del tema</button>`}
         ${tienePresentacion ? `<a class="status-btn pdf-link" href="presentaciones/${encodeURIComponent(id)}.pdf" download target="_blank" rel="noopener">📊 Descargar presentación</a>` : ""}
       </div>
     </div>
@@ -560,8 +560,10 @@ function openTema(id) {
         <div class="tema-video-caption">Presentación generada con NotebookLM (también descargable arriba)</div>
       </div>
     ` : ""}
-    <div class="md-body">${bodyHtml}</div>
+    ${tema.pdf ? `<div class="pdf-viewer" id="pdf-viewer"><div class="pdf-loading">Cargando el temario…</div></div>
+    <details class="md-texto"><summary>Ver el tema en texto (sin formato)</summary><div class="md-body">${bodyHtml}</div></details>` : `<div class="md-body">${bodyHtml}</div>`}
   `;
+  if (tema.pdf) mostrarPdf(tema.pdf, document.getElementById("pdf-viewer"));
   wrap.querySelectorAll(".status-btn[data-status]").forEach(btn => {
     btn.onclick = () => {
       STATE.temaStatus[id] = btn.dataset.status;
@@ -583,6 +585,59 @@ function openTema(id) {
   window.scrollTo(0, 0);
   document.getElementById("main").scrollTop = 0;
   renderSidebarList(document.getElementById("search-box").value);
+}
+
+/* ============================= Visor de PDF ============================= */
+// Temario nuevo en PDF (18/11/2026): PDF.js de cdnjs, páginas dibujadas a medida que se ven.
+const PDFJS_URL = "./vendor/pdfjs/pdf.min.mjs";          // pdfjs-dist 6.2.108 (legacy build, Apache 2.0)
+const PDFJS_WORKER = "vendor/pdfjs/pdf.worker.min.mjs";
+let _pdfjsCarga = null, _pdfTurno = 0;
+function cargarPdfjs() {
+  if (!_pdfjsCarga) _pdfjsCarga = import(PDFJS_URL).then(lib => {
+    lib.GlobalWorkerOptions.workerSrc = PDFJS_WORKER; return lib;
+  }).catch(e => { _pdfjsCarga = null; throw e; });
+  return _pdfjsCarga;
+}
+async function mostrarPdf(url, cont) {
+  if (!cont) return;
+  const turno = ++_pdfTurno;
+  try {
+    const pdfjsLib = await cargarPdfjs();
+    const doc = await pdfjsLib.getDocument({ url }).promise;
+    if (turno !== _pdfTurno) return;
+    cont.innerHTML = "";
+    const ancho = () => Math.min(cont.clientWidth || 800, 1000);
+    const obs = new IntersectionObserver(entradas => {
+      for (const e of entradas) {
+        if (!e.isIntersecting || e.target.dataset.hecho) continue;
+        e.target.dataset.hecho = "1"; obs.unobserve(e.target);
+        dibujar(+e.target.dataset.n, e.target);
+      }
+    }, { rootMargin: "800px 0px" });
+    async function dibujar(n, hueco) {
+      const pag = await doc.getPage(n);
+      const v1 = pag.getViewport({ scale: 1 });
+      const escala = ancho() / v1.width, dpr = Math.min(window.devicePixelRatio || 1, 2);
+      const v = pag.getViewport({ scale: escala * dpr });
+      const cv = document.createElement("canvas");
+      cv.width = v.width; cv.height = v.height;
+      cv.style.width = "100%"; cv.style.height = "auto";
+      await pag.render({ canvasContext: cv.getContext("2d"), viewport: v }).promise;
+      hueco.innerHTML = ""; hueco.style.minHeight = ""; hueco.appendChild(cv);
+    }
+    const p1 = await doc.getPage(1); const r = p1.getViewport({ scale: 1 });
+    for (let n = 1; n <= doc.numPages; n++) {
+      const h = document.createElement("div");
+      h.className = "pdf-pagina"; h.dataset.n = n;
+      h.style.minHeight = Math.round(ancho() * r.height / r.width) + "px";
+      h.innerHTML = `<span class="pdf-num">Página ${n} de ${doc.numPages}</span>`;
+      cont.appendChild(h); obs.observe(h);
+    }
+  } catch (err) {
+    console.error("Visor PDF:", err);
+    if (turno !== _pdfTurno) return;
+    cont.innerHTML = `<div class="pdf-error">No se ha podido mostrar el PDF aquí. <a href="${url}" target="_blank" rel="noopener">Ábrelo en otra pestaña</a> o descárgalo con el botón de arriba.</div>`;
+  }
 }
 
 /* ============================= Vista Test ============================= */
